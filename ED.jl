@@ -1,0 +1,151 @@
+using PowerSystems, PowerSimulations
+using Dates, TimeSeries
+using Ipopt
+using CSV, DataFrames, Plots
+
+# 0. Carpeta para guardar el modelo de Despacho Económico (ED)
+ed_model_output = joinpath(@__DIR__, "ED_model")
+if !isdir(ed_model_output)
+    mkdir(ed_model_output)
+end
+
+# 1. Carga del sistema
+file_path_static = joinpath(@__DIR__, "IEEE_14_Bus_Proyecto.m")
+if !isfile(file_path_static)
+    error("No se encontró el archivo .m en el directorio.")
+end
+
+println("Cargando sistema estático desde '$(basename(file_path_static))'...")
+sys = System(file_path_static)
+S_base = get_base_power(sys)
+
+# ########################  NO MODIFICAR ESTA PONDERACIÓN ########################
+# Ponderamos la demanda para aumentarla en un 10% según el enunciado
+λ_load = 1.10
+cargas = collect(get_components(PowerLoad, sys));
+
+for load in cargas
+    set_active_power!(load, get_active_power(load) * λ_load)
+    set_reactive_power!(load, get_reactive_power(load) * λ_load)
+end
+# ########################  NO MODIFICAR ESTA PONDERACIÓN ########################
+
+# 2. Reemplazo de un generador síncrono por una planta renovable solar de igual capacidad con RenewableDispatch 
+gen_termico_a_retirar = get_component(ThermalStandard, sys, "gen-3")
+max_active_power_gen_a_retirar = get_max_active_power(gen_termico_a_retirar)
+bus_solar = get_bus(gen_termico_a_retirar)
+
+remove_component!(sys, gen_termico_a_retirar)
+
+# Capacidad del panel solar
+cap_max_gen_solar = round(max_active_power_gen_a_retirar, digits=2)
+# Segun enunciado, como no tenemos capacidad de regular Q, entonces este se convierte de PV a PQ.
+set_bustype!(bus_solar, BusTypes.PQ)
+# Configuramos RenewableDispatch para modelar la planta solar
+gen_solar = RenewableDispatch(
+    name="gen-solar",
+    available=true,
+    bus=bus_solar,
+    active_power=0.0,
+    reactive_power=0.0,
+    rating=cap_max_gen_solar, # asegura que el reemplazo de tecnología mantenga la capacidad de generación
+    prime_mover_type=PrimeMovers.PVe,
+    reactive_power_limits=(min=0, max=0), # está capacitado para regular reactivos/ AJUSTE, NO ESTA CAPACITADO SEGUN ENUNCIADO
+    power_factor=1.0,
+    operation_cost=TwoPartCost(VariableCost(0.0), 0.0), # Costo variable 0
+    base_power=S_base)
+
+# La añadimos al sistema
+add_component!(sys, gen_solar)
+
+# 3. Definición de funciones de costo para el resto de generadores térmicos
+# Genéricamente: C(P) = a + (b)P + (c)P^2
+
+# Como para el panel fotovoltaico ya definimos la función de costo (costo nulo) solo asignamos a los generadores térmicos
+gens_termicos = sort!(collect(get_components(ThermalStandard, sys)), by=x -> get_name(x))
+
+# SE CAMBIARON SEGUN ENUNCIADO
+costos_fijos = [2100.0, 7200.0, 6250.0, 2000.0] # a
+costos_variables = [(0.1, 10.0), (0.06, 7.0), (0.07, 8.0), (0.5, 60.0)] # (c,b)
+
+# Se le asigna a cada generador térmico la función de costos cuadrática 
+for (i, g) in enumerate(gens_termicos)
+    costo_cuadratico = VariableCost(costos_variables[i])
+    costo_total = ThreePartCost(costo_cuadratico, costos_fijos[i], 0.0, 0.0)
+    set_operation_cost!(g, costo_total)
+end
+
+println("\nCostos actualizados correctamente.")
+
+# Imprimimos información de los generadores síncronos
+for g in gens_termicos
+    println("bus: $(get_number(get_bus(g))), gen_id: $(get_name(g))")
+    println("Costo: $(get_operation_cost(g)), Límites: $(get_active_power_limits(g))")
+end
+
+# 4. Formulación del ED con TimeSeries
+start_time = DateTime("2024-01-01T00:00:00") # "yyyy-mm-dd"
+timestamps = [start_time + Hour(i) for i in 0:23]
+
+# Carga de perfiles desde el archivo CSV
+ruta_perfiles = joinpath(@__DIR__, "perfiles_normalizados.csv")
+df_perfiles = CSV.read(ruta_perfiles, DataFrame)
+
+# Perfil de demanda normalizado aplicado a todas las cargas del sistema:
+perfil_demanda_pu = df_perfiles.Demanda_normalizada
+for load in get_components(PowerLoad, sys)
+    ta = TimeArray(timestamps, perfil_demanda_pu)
+    add_time_series!(sys, load, SingleTimeSeries(name="max_active_power", data=ta))
+end
+
+# Perfil de irradiancia solar normalizado aplicado a la generación fotovoltaica:
+perfil_solar_pu = df_perfiles.Irradiancia_normalizada
+ta_solar = TimeArray(timestamps, perfil_solar_pu)
+add_time_series!(sys, gen_solar, SingleTimeSeries(name="max_active_power", data=ta_solar))
+
+# Transformamos las TimeSeries de un solo escenario (SingleTimeSeries) a Deterministic para DecisionModel
+transform_single_time_series!(sys, 24, Hour(1)) # (sys, horizonte temporal, resolución temporal)
+
+# 5. Plantilla de ED
+template_ed = template_economic_dispatch()
+set_network_model!(template_ed, NetworkModel(CopperPlatePowerModel, duals=[CopperPlateBalanceConstraint]))
+
+# Optimizador y DecisionModel
+optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 3) # "print_level" es solo la verbosidad
+# en el output del solver
+modelo_ed = DecisionModel(template_ed, sys, optimizer=optimizer, horizon=24)
+
+# 6. Construir el modelo y resolver el ED
+println("\nConstruyendo el modelo matemático...")
+build!(modelo_ed, output_dir=ed_model_output)
+println("\nResolviendo el despacho económico...")
+solve!(modelo_ed)
+
+println("\n¡Despacho resuelto exitosamente!")
+
+# Extracción de los resultados
+res = ProblemResults(modelo_ed)
+vars = read_variables(res)
+
+println("\nResultados para variables de decisión (MW):")
+despacho_termico = vars["ActivePowerVariable__ThermalStandard"]
+despacho_solar = vars["ActivePowerVariable__RenewableDispatch"]
+despacho_p = innerjoin(despacho_termico, despacho_solar, on=:DateTime)
+
+despacho_p_print = select(despacho_p, ["DateTime"; sort(names(despacho_p)[2:end])])
+display(despacho_p_print)
+
+println("\nResultados para función objetivo - costos minimizados:")
+stats = read_optimizer_stats(res)
+println(stats[1, :objective_value])
+
+println("\nResultados para variables duales - precio de la energía (\$/MWh):")
+duals = read_duals(res)
+# La restricción de balance de potencia está formulada en pu, su dual está en $/pu.
+lambda_pu = duals["CopperPlateBalanceConstraint__System"]
+# Dividimos por S_base para obtener el costo marginal en $/MWh.
+lambda_mw = DataFrame(DateTime=lambda_pu.DateTime, Lambda_MW=lambda_pu[!, 2] ./ S_base)
+display(lambda_mw)
+
+# Las salidas de este código deberán ser consideradas como los setpoints de potencia activa a emplear en 
+# la resolución de los flujos de potencia. 
