@@ -3,48 +3,37 @@ using Dates, TimeSeries
 using Ipopt
 using CSV, DataFrames, Plots
 
-# 0. Carpeta para guardar el modelo de Despacho Económico (ED)
+# Carpeta para guardar el modelo
 ed_model_output = joinpath(@__DIR__, "ED_model")
 if !isdir(ed_model_output)
     mkdir(ed_model_output)
 end
 
-# 1. Carga del sistema
+# Carga del sistema
 file_path_static = joinpath(@__DIR__, "IEEE_14_Bus_Proyecto.m")
-if !isfile(file_path_static)
-    error("No se encontró el archivo .m en el directorio.")
-end
-
-println("Cargando sistema estático desde '$(basename(file_path_static))'...")
 sys = System(file_path_static)
 S_base = get_base_power(sys)
 
-# ########################  NO MODIFICAR ESTA PONDERACIÓN ########################
-# Ponderamos la demanda para aumentarla en un 10% según el enunciado
+#Ponderación 10% 
 λ_load = 1.10
 cargas = collect(get_components(PowerLoad, sys));
-
 for load in cargas
     set_active_power!(load, get_active_power(load) * λ_load)
     set_reactive_power!(load, get_reactive_power(load) * λ_load)
-
-    set_max_active_power!(load, get_active_power(load) * λ_load)
-    set_max_reactive_power!(load,  get_reactive_power(load) * λ_load)
+    set_max_active_power!(load, get_max_active_power(load) * λ_load)
+    set_max_reactive_power!(load, get_max_reactive_power(load) * λ_load)
 end
-# ########################  NO MODIFICAR ESTA PONDERACIÓN ########################
 
-# 2. Reemplazo de un generador síncrono por una planta renovable solar de igual capacidad con RenewableDispatch 
+# Reemplazo gen3
 gen_termico_a_retirar = get_component(ThermalStandard, sys, "gen-3")
 max_active_power_gen_a_retirar = get_max_active_power(gen_termico_a_retirar)
 bus_solar = get_bus(gen_termico_a_retirar)
-
 remove_component!(sys, gen_termico_a_retirar)
 
 # Capacidad del panel solar
 cap_max_gen_solar = round(max_active_power_gen_a_retirar, digits=2)
-# Segun enunciado, como no tenemos capacidad de regular Q, entonces este se convierte de PV a PQ.
+# Segun enunciado, como no tenemos capacidad de regular Q se convierte a PQ
 set_bustype!(bus_solar, PowerSystems.ACBusTypes.PQ)
-# Configuramos RenewableDispatch para modelar la planta solar
 gen_solar = RenewableDispatch(
     name="gen-solar",
     available=true,
@@ -57,27 +46,19 @@ gen_solar = RenewableDispatch(
     power_factor=1.0,
     operation_cost=TwoPartCost(VariableCost(0.0), 0.0), # Costo variable 0
     base_power=S_base)
-
-# La añadimos al sistema
 add_component!(sys, gen_solar)
 
-# 3. Definición de funciones de costo para el resto de generadores térmicos
-# Genéricamente: C(P) = a + (b)P + (c)P^2
-
-# Como para el panel fotovoltaico ya definimos la función de costo (costo nulo) solo asignamos a los generadores térmicos
+#Funciones de costo: solo asignamos a los generadores térmicos
 gens_termicos = sort!(collect(get_components(ThermalStandard, sys)), by=x -> get_name(x))
 
 # SE CAMBIARON SEGUN ENUNCIADO
 costos_fijos = [2100.0, 7200.0, 6250.0, 2000.0] # a
 costos_variables = [(0.1, 10.0), (0.06, 7.0), (0.07, 8.0), (0.5, 60.0)] # (c,b)
-
-# Se le asigna a cada generador térmico la función de costos cuadrática 
 for (i, g) in enumerate(gens_termicos)
     costo_cuadratico = VariableCost(costos_variables[i])
     costo_total = ThreePartCost(costo_cuadratico, costos_fijos[i], 0.0, 0.0)
     set_operation_cost!(g, costo_total)
 end
-
 println("\nCostos actualizados correctamente.")
 
 # Imprimimos información de los generadores síncronos
@@ -86,7 +67,7 @@ for g in gens_termicos
     println("Costo: $(get_operation_cost(g)), Límites: $(get_active_power_limits(g))")
 end
 
-# 4. Formulación del ED con TimeSeries
+#ED
 start_time = DateTime("2024-01-01T00:00:00") # "yyyy-mm-dd"
 timestamps = [start_time + Hour(i) for i in 0:23]
 
@@ -109,7 +90,7 @@ add_time_series!(sys, gen_solar, SingleTimeSeries(name="max_active_power", data=
 # Transformamos las TimeSeries de un solo escenario (SingleTimeSeries) a Deterministic para DecisionModel
 transform_single_time_series!(sys, 24, Hour(1)) # (sys, horizonte temporal, resolución temporal)
 
-# 5. Plantilla de ED
+# Plantilla de ED
 template_ed = template_economic_dispatch()
 set_network_model!(template_ed, NetworkModel(CopperPlatePowerModel, duals=[CopperPlateBalanceConstraint], use_slacks=true))
 
@@ -118,30 +99,25 @@ optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 3) # "pr
 # en el output del solver
 modelo_ed = DecisionModel(template_ed, sys, optimizer=optimizer, horizon=24)
 
-# 6. Construir el modelo y resolver el ED
+# Construcción del modelo y resolver el ED
 println("\nConstruyendo el modelo matemático...")
 build!(modelo_ed, output_dir=ed_model_output)
 println("\nResolviendo el despacho económico...")
 solve!(modelo_ed)
-
 println("\n¡Despacho resuelto exitosamente!")
 
 # Extracción de los resultados
 res = ProblemResults(modelo_ed)
 vars = read_variables(res)
-
 println("\nResultados para variables de decisión (MW):")
 despacho_termico = vars["ActivePowerVariable__ThermalStandard"]
 despacho_solar = vars["ActivePowerVariable__RenewableDispatch"]
 despacho_p = innerjoin(despacho_termico, despacho_solar, on=:DateTime)
-
 despacho_p_print = select(despacho_p, ["DateTime"; sort(names(despacho_p)[2:end])])
 display(despacho_p_print)
-
 println("\nResultados para función objetivo - costos minimizados:")
 stats = read_optimizer_stats(res)
 println(stats[1, :objective_value])
-
 println("\nResultados para variables duales - precio de la energía (\$/MWh):")
 duals = read_duals(res)
 # La restricción de balance de potencia está formulada en pu, su dual está en $/pu.
@@ -164,17 +140,15 @@ end
 
 despacho_p_print.Demanda_Total_MW = sum.(eachrow(despacho_p_print[!, 2:end]))
 
-# 1. Los puntos de despacho de potencia activa (MW) de todas las unidades generadoras
-# en cada hora, otorgados por los EDs.
+# Los puntos de despacho de potencia activa (MW) de todas las unidades generadoras en cada hora, otorgados por los EDs.
 # Aprovecho de agregar una nueva columna con la suma de generacion por cada fila.
-despacho_p_print.Demanda_Total_MW = sum.(eachrow(despacho_p_print[!, 2:end]))
 CSV.write(joinpath(tablas_path, "1_despachos_generacion.csv"), despacho_p_print)
 
-# 2. El costo total minimizado al final del d´ıa de ma˜nana, otorgado por los EDs.
+# El costo total minimizado al final del d´ıa de ma˜nana, otorgado por los EDs.
 # Resultados para función objetivo - costos minimizados:
 #  VALOR OBTENIDO EN CONSOLA:  31147.352583930755
 
-# 3. La evolucion de la demanda total (MW) del sistema en cada hora del dia, esclareciendo
+# La evolucion de la demanda total (MW) del sistema en cada hora del dia, esclareciendo
 # si es o no satisfecha con los despachos calculados en 1. Identifique el o los horarios de
 # mayor demanda.
 
@@ -186,11 +160,20 @@ df_demanda = DataFrame(
 )
 CSV.write(joinpath(tablas_path, "2_demanda_total_real.csv"), df_demanda)
 
-# Como en el inciso 1. ya agregamos la suma, basta con comparar la suma de generacion por hora
-# con la demanda_total_real anterior.
+# Comparación explícita: generación total despachada vs demanda real por hora
+df_comparacion = DataFrame(
+    DateTime      = timestamps,
+    Generacion_MW = despacho_p_print.Demanda_Total_MW,
+    Demanda_MW    = demanda_real_mw,
+    Diferencia_MW = despacho_p_print.Demanda_Total_MW .- demanda_real_mw
+)
+println("\nComparación Generación vs Demanda (MW) por hora:")
+display(df_comparacion)
+idx_max_dem = argmax(demanda_real_mw)
+println("Hora de mayor demanda: $(timestamps[idx_max_dem]) → $(round(demanda_real_mw[idx_max_dem], digits=2)) MW")
+CSV.write(joinpath(tablas_path, "3_comparacion_gen_dem.csv"), df_comparacion)
 
-# 4. La evoluci´on del costo marginal λ de la energ´ıa (en USD/MWh) del sistema en cada
-#   hora del d´ıa, otorgado por los EDs.
+# La evoluci´on del costo marginal λ de la energ´ıa (en USD/MWh) del sistema en cada hora del d´ıa, otorgado por los EDs.
 CSV.write(joinpath(tablas_path, "4_costo_marginal.csv"), lambda_mw)
 
 
@@ -251,5 +234,17 @@ println("\nFlujos de potencia Exitosos")
 display(resultados_voltaje)
 
 CSV.write(joinpath(tablas_path, "5_perfiles_voltaje.csv"), resultados_voltaje)
+
+# Verificación norma técnica: 0.95 <= |V| <= 1.05 pu
+println("\nVerificación norma técnica de voltajes [0.95, 1.05] pu:")
+df_voltajes_largo = stack(resultados_voltaje, Not(:Hora), variable_name=:Barra, value_name=:Vm)
+violaciones = filter(r -> r.Vm < 0.95 || r.Vm > 1.05, df_voltajes_largo)
+if nrow(violaciones) == 0
+    println("✓ Todos los voltajes se mantienen dentro del rango [0.95, 1.05] pu.")
+else
+    println("⚠ VIOLACIONES DE VOLTAJE ENCONTRADAS:")
+    display(violaciones)
+end
+CSV.write(joinpath(tablas_path, "5b_violaciones_voltaje.csv"), violaciones)
 
 ### PARA LAS CONTINGENCIAS HACER OTRO DEEPCOPY PARA NO ALTERAR SISTEMA ORIGINAL
