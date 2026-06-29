@@ -1,4 +1,4 @@
-using PowerSystems, PowerSimulations
+using PowerSystems, PowerSimulations, PowerFlows
 using Dates, TimeSeries
 using Ipopt
 using CSV, DataFrames, Plots
@@ -181,3 +181,62 @@ CSV.write(joinpath(tablas_path, "2_demanda_total_real.csv"), df_demanda)
 # 4. La evoluci´on del costo marginal λ de la energ´ıa (en USD/MWh) del sistema en cada
 #   hora del d´ıa, otorgado por los EDs.
 CSV.write(joinpath(tablas_path, "4_costo_marginal.csv"), lambda_mw)
+
+
+
+### PARTE DE FLUJO DE POTENCIA PA HACER LA 5.
+
+println("FLujo potencia iniciado")
+
+sys_flujo = deepcopy(sys)
+ac_pf_solver = ACPowerFlow(check_reactive_power_limits = true)
+
+resultados_voltaje = DataFrame(Hora = 1:24)
+barras = sort(collect(get_components(Bus, sys_flujo)), by = x -> get_number(x))
+for b in barras
+    resultados_voltaje[!, "Barra_$(get_number(b))"] = zeros(Float64, 24)
+end
+
+base_P_load = Dict(get_name(l) => get_active_power(l) for l in get_components(PowerLoad, sys_flujo))
+base_Q_load = Dict(get_name(l) => get_reactive_power(l) for l in get_components(PowerLoad, sys_flujo))
+gens_termicos_flujo = sort!(collect(get_components(ThermalStandard, sys_flujo)), by=x -> get_name(x))
+gen_solar_flujo = get_component(RenewableDispatch, sys_flujo, "gen-solar")
+
+# en el loop de aca abajo se corre para cada hora un flujo. Para eso, primero
+# se actualizan los valores de las demandas para esa hora según el .csv entregado
+for i in 1:24
+
+   factor_demanda = df_perfiles.Demanda_normalizada[i]
+    for l in get_components(PowerLoad, sys_flujo)
+        set_active_power!(l, base_P_load[get_name(l)] * factor_demanda)
+        set_reactive_power!(l, base_Q_load[get_name(l)] * factor_demanda)
+    end
+    # lo mismo de antes pero ahora actualizamos para cada hora la generacion 
+    # de la planta solar segun el .csv entregado de irradiancia.
+    factor_solar = df_perfiles.Irradiancia_normalizada[i]
+    set_active_power!(gen_solar_flujo, cap_max_gen_solar * factor_solar)
+
+    for g in gens_termicos_flujo
+        nombre_gen = get_name(g)
+        p_despacho_mw = despacho_p_print[i, nombre_gen]
+        set_active_power!(g, p_despacho_mw / S_base)
+    end
+    
+    res_temp = PowerFlows.solve_powerflow(ac_pf_solver, sys_flujo)
+    if isa(res_temp, Dict)
+        df_temp = res_temp["bus_results"]
+        
+        for b in barras
+            num_bar = get_number(b)
+            # Buscamos el voltaje de esta barra en el DataFrame de resultados
+            v_actual = df_temp[df_temp.bus_number .== num_bar, :Vm][1]
+            resultados_voltaje[i, "Barra_$num_bar"] = v_actual
+        end
+    else
+        println("OJITO PIOJO: El flujo de potencia no convergió en la Hora $i")
+    end
+end
+println("\nFlujos de potencia Exitosos")
+display(resultados_voltaje)
+
+CSV.write(joinpath(tablas_path, "5_perfiles_voltaje.csv"), resultados_voltaje)
