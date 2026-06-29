@@ -40,7 +40,7 @@ remove_component!(sys, gen_termico_a_retirar)
 # Capacidad del panel solar
 cap_max_gen_solar = round(max_active_power_gen_a_retirar, digits=2)
 # Segun enunciado, como no tenemos capacidad de regular Q, entonces este se convierte de PV a PQ.
-set_bustype!(bus_solar, BusTypes.PQ)
+set_bustype!(bus_solar, PowerSystems.ACBusTypes.PQ)
 # Configuramos RenewableDispatch para modelar la planta solar
 gen_solar = RenewableDispatch(
     name="gen-solar",
@@ -149,3 +149,35 @@ display(lambda_mw)
 
 # Las salidas de este código deberán ser consideradas como los setpoints de potencia activa a emplear en 
 # la resolución de los flujos de potencia. 
+
+### GUARDAR INFO PARA ANALISIS ###
+tablas_path = "Tablas_Resultados_ED"
+mkpath(tablas_path)
+# 1. Los puntos de despacho de potencia activa (MW) de todas las unidades generadoras
+# en cada hora, otorgados por los EDs.
+# Aprovecho de agregar una nueva columna con la suma de generacion por cada fila.
+despacho_p_print.Demanda_Total_MW = sum.(eachrow(despacho_p_print[!, 2:end]))
+CSV.write(joinpath(tablas_path, "1_despachos_generacion.csv"), despacho_p_print)
+
+# 2. El costo total minimizado al final del d´ıa de ma˜nana, otorgado por los EDs.
+# Resultados para función objetivo - costos minimizados:
+#  VALOR OBTENIDO EN CONSOLA:  31147.352583930755
+
+# 3. La evolucion de la demanda total (MW) del sistema en cada hora del dia, esclareciendo
+# si es o no satisfecha con los despachos calculados en 1. Identifique el o los horarios de
+# mayor demanda.
+
+demanda_base_total_mw = sum(get_active_power(load) for load in get_components(PowerLoad, sys)) * S_base
+demanda_real_mw = demanda_base_total_mw .* df_perfiles.Demanda_normalizada
+df_demanda = DataFrame(
+    DateTime = timestamps,
+    Demanda_Total_MW = demanda_real_mw
+)
+CSV.write(joinpath(tablas_path, "2_demanda_total_real.csv"), df_demanda)
+
+# Como en el inciso 1. ya agregamos la suma, basta con comparar la suma de generacion por hora
+# con la demanda_total_real anterior.
+
+# 4. La evoluci´on del costo marginal λ de la energ´ıa (en USD/MWh) del sistema en cada
+#   hora del d´ıa, otorgado por los EDs.
+CSV.write(joinpath(tablas_path, "4_costo_marginal.csv"), lambda_mw)
