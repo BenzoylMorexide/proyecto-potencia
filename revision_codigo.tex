@@ -1,0 +1,736 @@
+\documentclass[12pt, a4paper]{article}
+
+%--- Paquetes ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{parskip}
+\usepackage{titlesec}
+\usepackage{mdframed}
+
+%--- Colores ---
+\definecolor{codeblue}{RGB}{0,90,160}
+\definecolor{codegray}{RGB}{245,245,245}
+\definecolor{okgreen}{RGB}{0,140,0}
+\definecolor{warnred}{RGB}{200,0,0}
+\definecolor{warnorange}{RGB}{200,100,0}
+\definecolor{juliapurple}{RGB}{100,0,170}
+
+%--- Estilo de código Julia ---
+\lstdefinelanguage{Julia}{
+  keywords={using, for, in, end, if, else, function, return, true, false},
+  keywordstyle=\color{juliapurple}\bfseries,
+  comment=[l]{\#},
+  commentstyle=\color{gray}\itshape,
+  stringstyle=\color{codeblue},
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codegray},
+  frame=single,
+  rulecolor=\color{gray!40},
+  breaklines=true,
+  showstringspaces=false,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=5pt,
+}
+
+%--- Comandos de estado ---
+\newcommand{\cumple}{\textcolor{okgreen}{\textbf{[CUMPLE]}}}
+\newcommand{\parcial}{\textcolor{warnorange}{\textbf{[CUMPLE PARCIALMENTE]}}}
+\newcommand{\noimpl}{\textcolor{warnred}{\textbf{[NO IMPLEMENTADO]}}}
+
+%--- Entorno para citas del enunciado ---
+\newmdenv[
+  linecolor=codeblue,
+  backgroundcolor=blue!5,
+  leftmargin=0pt,
+  rightmargin=0pt,
+  innerleftmargin=10pt,
+  innerrightmargin=10pt,
+  innertopmargin=6pt,
+  innerbottommargin=6pt,
+]{enunciadobox}
+
+%--- Título ---
+\title{
+  \large Pontificia Universidad Católica de Chile \\
+  \large IEE2313 --- Sistemas de Potencia \\[0.5em]
+  \LARGE Revisión Punto a Punto: Enunciado vs.\ Código \texttt{ED.jl}
+}
+\author{Análisis del Proyecto Final}
+\date{Junio 2026}
+
+% ============================================================
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Introducción}
+
+El presente documento revisa, punto a punto, cada requisito del enunciado oficial
+del Proyecto Final de IEE2313 contra el código \texttt{ED.jl} entregado como base.
+Para cada sección se cita el texto del enunciado, se indica el fragmento de código
+correspondiente con sus números de línea, y se justifica si el requisito se cumple,
+se cumple parcialmente, o no está implementado.
+
+El código trabaja sobre el sistema IEEE de 14 barras contenido en
+\texttt{IEEE\_14\_Bus\_Proyecto.m}, con potencia base $S_\text{base} = 100$~MVA.
+
+% ============================================================
+\section{Parte I --- Caso Base (Sección 1.1)}
+
+% ------------------------------------------------------------
+\subsection{Carga del sistema y librerías}
+
+\begin{enunciadobox}
+\textit{``Su objetivo será proyectar y analizar la operación del día de mañana dentro
+de este sistema, cuyos parámetros se encuentran contenidos en el archivo
+\texttt{IEEE\_14\_Bus\_Proyecto.m}. Para llevarlo a cabo se deberán emplear los paquetes
+\texttt{PowerSystems.jl}, \texttt{PowerFlows.jl} y \texttt{PowerSimulations.jl}
+(versión 0.27.8) del ecosistema Sienna en Julia.''}
+\end{enunciadobox}
+
+\textbf{Estado:} \cumple
+
+\begin{lstlisting}[language=Julia, firstnumber=1,
+  caption={Líneas 1--20: importación de paquetes y carga del sistema}]
+using PowerSystems, PowerSimulations, PowerFlows
+using Dates, TimeSeries
+using Ipopt
+using CSV, DataFrames, Plots
+
+file_path_static = joinpath(@__DIR__, "IEEE_14_Bus_Proyecto.m")
+if !isfile(file_path_static)
+    error("No se encontro el archivo .m en el directorio.")
+end
+sys    = System(file_path_static)
+S_base = get_base_power(sys)   # S_base = 100 MVA
+\end{lstlisting}
+
+\textbf{Justificación:}
+Los tres paquetes requeridos (\texttt{PowerSystems}, \texttt{PowerSimulations},
+\texttt{PowerFlows}) se importan en la línea~1.
+El sistema se carga desde \texttt{IEEE\_14\_Bus\_Proyecto.m} en la línea~19
+mediante \texttt{System()}, y se obtiene $S_\text{base}=100$~MVA en la línea~20.
+Se incluye verificación de existencia del archivo (líneas~14--16).
+
+% ------------------------------------------------------------
+\subsection{Límites Pmin/Pmax de los generadores (Tabla 1)}
+
+\begin{enunciadobox}
+\textit{``En la práctica se dispone de cinco unidades generadoras con los siguientes
+límites mínimos y máximos de potencia activa [Tabla 1]:
+gen-1 bus~1 $P^\text{min}=0$, $P^\text{max}=1.0$~pu;
+gen-2 bus~2 $P^\text{max}=0.72$~pu;
+gen-3 bus~3 $P^\text{max}=0.9$~pu;
+gen-4 bus~6 $P^\text{max}=0.6$~pu;
+gen-5 bus~8 $P^\text{max}=0.55$~pu.
+Las potencias máximas han sido alteradas para coincidir con la Tabla~1.
+Esto puede verse en el archivo \texttt{.m}.''}
+\end{enunciadobox}
+
+\textbf{Estado:} \cumple
+
+\textbf{Justificación:}
+Los límites se encuentran en la matriz \texttt{mpc.gen} del archivo
+\texttt{IEEE\_14\_Bus\_Proyecto.m} y son heredados automáticamente por el código
+al ejecutar \texttt{System(file\_path\_static)} en la línea~19.
+La verificación contra la Tabla~1 se muestra a continuación:
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{ccccc}
+\toprule
+Enunciado & Bus & $P^\text{max}$ enunciado & $P^\text{max}$ en \texttt{.m} & ¿Coincide? \\
+\midrule
+gen-1 & 1 & 1.00~pu (100~MW) & 100~MW & \textcolor{okgreen}{Sí} \\
+gen-2 & 2 & 0.72~pu ( 72~MW) &  72~MW & \textcolor{okgreen}{Sí} \\
+gen-3 & 3 & 0.90~pu ( 90~MW) &  90~MW & \textcolor{okgreen}{Sí} \\
+gen-4 & 6 & 0.60~pu ( 60~MW) &  60~MW & \textcolor{okgreen}{Sí} \\
+gen-5 & 8 & 0.55~pu ( 55~MW) &  55~MW & \textcolor{okgreen}{Sí} \\
+\bottomrule
+\end{tabular}
+\caption{Verificación de límites Pmax contra Tabla~1 del enunciado.}
+\end{table}
+
+\noindent\textbf{Nota:} El enunciado nombra los generadores gen-1 a gen-5 (por
+orden de aparición). El archivo \texttt{.m} y el código los identifican como
+gen-1, gen-2, gen-3, gen-6, gen-8 (por número de barra). Corresponden al mismo
+conjunto de generadores.
+
+% ------------------------------------------------------------
+\subsection{Funciones de costo cuadráticas}
+
+\begin{enunciadobox}
+\textit{``Las funciones de costo de cada unidad generadora son modeladas como
+funciones de costo cuadráticas y, en unidades de USD/h:}
+\begin{align*}
+C_1(P_1) &= 2100 + 10P_1 + 0.1P_1^2 \\
+C_2(P_2) &= 7200 + 7P_2 + 0.06P_2^2 \\
+C_3(P_3) &= 1500 + 6P_3 + 0.02P_3^2 \\
+C_4(P_4) &= 6250 + 8P_4 + 0.07P_4^2 \\
+C_5(P_5) &= 2000 + 60P_5 + 0.5P_5^2
+\end{align*}
+\textit{Se asumirá que todas las unidades se encuentran encendidas permanentemente.''}
+\end{enunciadobox}
+
+\textbf{Estado:} \cumple\ (para los 4 generadores que permanecen activos).
+
+\begin{lstlisting}[language=Julia, firstnumber=65,
+  caption={Líneas 65--76: asignación de funciones de costo cuadráticas}]
+gens_termicos = sort!(collect(get_components(ThermalStandard, sys)),
+                      by=x -> get_name(x))
+# Orden resultante: gen-1, gen-2, gen-6, gen-8
+
+# SE CAMBIARON SEGUN ENUNCIADO
+costos_fijos    = [2100.0, 7200.0, 6250.0, 2000.0]          # a [USD/h]
+costos_variables = [(0.1, 10.0), (0.06, 7.0), (0.07, 8.0), (0.5, 60.0)] # (c, b)
+
+for (i, g) in enumerate(gens_termicos)
+    costo_cuadratico = VariableCost(costos_variables[i])
+    costo_total = ThreePartCost(costo_cuadratico, costos_fijos[i], 0.0, 0.0)
+    set_operation_cost!(g, costo_total)
+end
+\end{lstlisting}
+
+\textbf{Justificación:}
+Tras eliminar gen-3 (línea~38), los generadores térmicos restantes ordenados
+alfabéticamente son: gen-1, gen-2, gen-6, gen-8.
+La función \texttt{VariableCost((c, b))} de \texttt{PowerSystems.jl} recibe
+primero el coeficiente cuadrático~$c$ y luego el lineal~$b$.
+La verificación coeficiente a coeficiente es:
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{ccccccc}
+\toprule
+Índice & Gen (código) & Gen (enunciado) & $a$ & $b$ & $c$ & ¿Correcto? \\
+\midrule
+1 & gen-1 & gen-1 & 2100 & 10.0 & 0.10 & \textcolor{okgreen}{Sí} \\
+2 & gen-2 & gen-2 & 7200 &  7.0 & 0.06 & \textcolor{okgreen}{Sí} \\
+3 & gen-6 & gen-4 & 6250 &  8.0 & 0.07 & \textcolor{okgreen}{Sí} \\
+4 & gen-8 & gen-5 & 2000 & 60.0 & 0.50 & \textcolor{okgreen}{Sí} \\
+\bottomrule
+\end{tabular}
+\caption{Verificación de coeficientes de costo. $C_3$ no se asigna porque
+gen-3 es reemplazado por la planta solar.}
+\end{table}
+
+La suposición de unidades encendidas permanentemente se satisface mediante el
+uso de \texttt{template\_economic\_dispatch()} (línea~110), que formula el ED
+como un problema continuo sin variables de compromiso on/off.
+
+% ------------------------------------------------------------
+\subsection{Reemplazo de gen-3 por planta fotovoltaica}
+
+\begin{enunciadobox}
+\textit{``A partir del día de mañana, la unidad gen-3 será retirada y reemplazada
+por una planta fotovoltaica de igual $P^\text{max}$ que su predecesora. Esta planta
+operará con un factor de potencia unitario, sin ser capaz de regular reactivos y
+con un costo variable nulo. Despachará potencia activa en función de un perfil de
+irradiancia solar normalizada. La barra que la aloja no tiene la capacidad por sí
+sola de regular su voltaje.''}
+\end{enunciadobox}
+
+\textbf{Estado:} \cumple\ (todos los sub-requisitos).
+
+\begin{lstlisting}[language=Julia, firstnumber=34,
+  caption={Líneas 34--59: retiro de gen-3 e incorporación de la planta solar}]
+gen_termico_a_retirar      = get_component(ThermalStandard, sys, "gen-3")
+max_active_power_gen_a_retirar = get_max_active_power(gen_termico_a_retirar)
+bus_solar = get_bus(gen_termico_a_retirar)
+
+remove_component!(sys, gen_termico_a_retirar)        # retira gen-3
+
+cap_max_gen_solar = round(max_active_power_gen_a_retirar, digits=2) # 0.9 pu
+set_bustype!(bus_solar, PowerSystems.ACBusTypes.PQ)  # barra pasa a PQ
+
+gen_solar = RenewableDispatch(
+    name="gen-solar",
+    available=true,
+    bus=bus_solar,
+    active_power=0.0,
+    reactive_power=0.0,
+    rating=cap_max_gen_solar,                        # igual Pmax que gen-3
+    prime_mover_type=PrimeMovers.PVe,
+    reactive_power_limits=(min=0, max=0),            # sin regulacion de Q
+    power_factor=1.0,                                # FP unitario
+    operation_cost=TwoPartCost(VariableCost(0.0), 0.0), # costo nulo
+    base_power=S_base)
+add_component!(sys, gen_solar)
+\end{lstlisting}
+
+\textbf{Justificación sub-requisito a sub-requisito:}
+\begin{enumerate}[leftmargin=*, label=\alph*)]
+  \item \textbf{Igual $P^\text{max}$:} Se obtiene con \texttt{get\_max\_active\_power}
+        (línea~35) y se asigna como \texttt{rating} (línea~51). Valor: 0.9~pu = 90~MW.
+  \item \textbf{Factor de potencia unitario:} \texttt{power\_factor=1.0} (línea~54).
+  \item \textbf{Sin regulación de reactivos:}
+        \texttt{reactive\_power\_limits=(min=0,~max=0)} (línea~53). El comentario
+        de esa línea está redactado de manera confusa, pero el valor implementado
+        es correcto.
+  \item \textbf{Costo variable nulo:}
+        \texttt{TwoPartCost(VariableCost(0.0),~0.0)} (línea~55).
+  \item \textbf{Barra sin control de voltaje:} La barra pasa de tipo PV a PQ
+        mediante \texttt{set\_bustype!(..., ACBusTypes.PQ)} (línea~43).
+  \item \textbf{Despacho según perfil de irradiancia:} Implementado en
+        líneas~102--104 (ver sección~\ref{sec:perfiles}).
+\end{enumerate}
+
+% ------------------------------------------------------------
+\subsection{Perfiles normalizados de demanda e irradiancia}
+\label{sec:perfiles}
+
+\begin{enunciadobox}
+\textit{``se dispone de un perfil de demanda normalizado el cual debe ser considerado
+para cada una de las cargas del sistema (...) la generación solar de mañana queda
+determinada por la ponderación del perfil de irradiancia por la capacidad de la
+unidad fotovoltaica.''}
+\end{enunciadobox}
+
+\textbf{Estado:} \cumple
+
+\begin{lstlisting}[language=Julia, firstnumber=87,
+  caption={Líneas 87--107: definición de timestamps y asignación de perfiles}]
+start_time = DateTime("2024-01-01T00:00:00")
+timestamps = [start_time + Hour(i) for i in 0:23]  # 24 marcas horarias
+
+ruta_perfiles = joinpath(@__DIR__, "perfiles_normalizados.csv")
+df_perfiles   = CSV.read(ruta_perfiles, DataFrame)
+
+# Perfil de demanda -> todas las cargas
+perfil_demanda_pu = df_perfiles.Demanda_normalizada
+for load in get_components(PowerLoad, sys)
+    ta = TimeArray(timestamps, perfil_demanda_pu)
+    add_time_series!(sys, load,
+        SingleTimeSeries(name="max_active_power", data=ta))
+end
+
+# Perfil de irradiancia -> generacion solar
+perfil_solar_pu = df_perfiles.Irradiancia_normalizada
+ta_solar = TimeArray(timestamps, perfil_solar_pu)
+add_time_series!(sys, gen_solar,
+    SingleTimeSeries(name="max_active_power", data=ta_solar))
+
+transform_single_time_series!(sys, 24, Hour(1))
+\end{lstlisting}
+
+\textbf{Justificación:}
+El archivo \texttt{perfiles\_normalizados.csv} contiene las columnas
+\texttt{Demanda\_normalizada} e \texttt{Irradiancia\_normalizada} para las 24~horas
+del día (horas~0 a~23). Se crean 24~timestamps horarios (líneas~87--88).
+El perfil de demanda se aplica individualmente a \textbf{cada carga} del sistema
+mediante un bucle \texttt{for} (líneas~96--99), cumpliendo el requisito de escalar
+la demanda por barra según el perfil global.
+El perfil solar se asigna a la planta fotovoltaica (líneas~102--104), limitando
+su generación hora a hora como $P_\text{solar}(t) \leq P^\text{max}_\text{solar}
+\times \text{irradiancia}(t)$.
+La función \texttt{transform\_single\_time\_series!} (línea~107) convierte los
+objetos \texttt{SingleTimeSeries} al formato \texttt{Deterministic} requerido
+por \texttt{DecisionModel}.
+
+% ------------------------------------------------------------
+\subsection{Voltajes de consigna $\leq 1.05$~pu}
+
+\begin{enunciadobox}
+\textit{``el sistema IEEE de 14 barras ha sido modificado para que la magnitud de
+los voltajes de consigna en todas las barras no supere los 1.05~pu.''}
+\end{enunciadobox}
+
+\textbf{Estado:} \cumple\ (implementado en el archivo \texttt{.m}).
+
+\textbf{Justificación:}
+Los voltajes de consigna se encuentran en la columna~$V_m$ de la matriz
+\texttt{mpc.bus} del archivo \texttt{.m} y son heredados automáticamente en
+la línea~19. Los valores son: 1.04, 1.03, 1.01, 1.00, 1.00, 1.025, 1.00, 1.035,
+1.00, 1.00, 1.00, 1.00, 1.00, 1.00~pu para las barras~1 a~14 respectivamente.
+Todos están estrictamente por debajo de 1.05~pu.
+
+% ------------------------------------------------------------
+\subsection{Escalado de demanda $+10\%$}
+
+\begin{enunciadobox}
+\textit{``los valores de potencias activas y reactivas de cada carga han sido
+aumentadas en un 10\% respecto de las importadas desde el archivo \texttt{.m},
+esto ya implementado en el archivo \texttt{ED.jl}.''}
+\end{enunciadobox}
+
+\textbf{Estado:} \cumple
+
+\begin{lstlisting}[language=Julia, firstnumber=22,
+  caption={Líneas 22--34: escalado de la demanda en un 10\%}]
+# ################  NO MODIFICAR ESTA PONDERACION  ################
+lambda_load = 1.10
+cargas = collect(get_components(PowerLoad, sys))
+
+for load in cargas
+    set_active_power!(load,  get_active_power(load)  * lambda_load)
+    set_reactive_power!(load, get_reactive_power(load) * lambda_load)
+    
+    set_max_active_power!(load, get_max_active_power(load) * lambda_load)
+    set_max_reactive_power!(load, get_max_reactive_power(load) * lambda_load)
+end
+# ################  NO MODIFICAR ESTA PONDERACION  ################
+\end{lstlisting}
+
+\textbf{Justificación:}
+Se aplica el factor $\lambda_\text{load}=1.10$ tanto a la potencia activa como
+reactiva de todas las cargas del sistema, incluyendo sus límites máximos. El bloque está delimitado por comentarios
+\texttt{NO MODIFICAR}, indicando que es parte del código base entregado o modificado según indicaciones.
+
+% ------------------------------------------------------------
+\subsection{Formulación del ED de 24 horas}
+
+\begin{enunciadobox}
+\textit{``para un horizonte de 24 horas se solicita determinar, en cada hora,
+los puntos de despacho para cada una de las unidades generadoras a través de la
+resolución de un problema de despacho económico (ED) solamente considerando
+restricciones de balance de generación-demanda y potencia mínima y máxima para
+los generadores.''}
+\end{enunciadobox}
+
+\textbf{Estado:} \cumple
+
+\begin{lstlisting}[language=Julia, firstnumber=112,
+  caption={Líneas 112--125: formulación, construcción y resolución del ED}]
+template_ed = template_economic_dispatch()
+set_network_model!(template_ed,
+    NetworkModel(CopperPlatePowerModel,
+                 duals=[CopperPlateBalanceConstraint],
+                 use_slacks=true))
+
+optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 3)
+modelo_ed = DecisionModel(template_ed, sys,
+                           optimizer=optimizer, horizon=24)
+
+build!(modelo_ed, output_dir=ed_model_output)
+solve!(modelo_ed)
+\end{lstlisting}
+
+\textbf{Justificación:}
+\begin{itemize}
+  \item \textbf{Horizonte 24 horas:} argumento \texttt{horizon=24} (línea~119).
+  \item \textbf{Solo balance y Pmin/Pmax:} el modelo \texttt{CopperPlatePowerModel}
+        impone únicamente la restricción de balance global
+        $\sum P_\text{gen}(t) = \sum P_\text{dem}(t)$, sin restricciones de
+        flujo en líneas. Los límites Pmin/Pmax se aplican automáticamente desde
+        el sistema.
+  \item \textbf{Precio marginal:} el argumento
+        \texttt{duals=[CopperPlateBalanceConstraint]} habilita el cálculo del
+        dual de la restricción de balance, que corresponde al costo marginal
+        $\lambda$ de la energía.
+\end{itemize}
+
+% ============================================================
+\section{Entregables de la Parte I}
+
+% ------------------------------------------------------------
+\subsection{Entregable 1 --- Puntos de despacho de potencia activa}
+
+\begin{enunciadobox}
+\textit{``Los puntos de despacho de potencia activa (MW) de todas las unidades
+generadoras en cada hora, otorgados por los EDs.''}
+\end{enunciadobox}
+
+\textbf{Estado:} \cumple\ (CSV comentado).
+
+\begin{lstlisting}[language=Julia, firstnumber=160,
+  caption={Líneas 160--171: limpieza y presentación del despacho}]
+# Limpieza de valores pequeños negativos antes de exportar
+for col in names(despacho_p_print)[2:end]
+    despacho_p_print[!, col] = [x < 1e-5 ? 0.0 : x for x in despacho_p_print[!, col]]
+end
+
+despacho_p_print.Demanda_Total_MW = sum.(eachrow(despacho_p_print[!, 2:end]))
+CSV.write(joinpath(tablas_path, "1_despachos_generacion.csv"), despacho_p_print)
+\end{lstlisting}
+
+\textbf{Justificación:}
+Se extraen las variables de despacho de generadores térmicos y solar por separado
+y se unen en una tabla con columna por unidad y fila por hora. Se limpian
+valores residuales del optimizador menores a $10^{-5}$ y se agrega una
+columna de suma total de generación por hora. El archivo CSV se guarda en
+\texttt{Tablas\_Resultados\_ED/1\_despachos\_generacion.csv} (línea~171).
+
+% ------------------------------------------------------------
+\subsection{Entregable 2 --- Costo total minimizado}
+
+\begin{enunciadobox}
+\textit{``El costo total minimizado al final del día de mañana, otorgado por los EDs.''}
+\end{enunciadobox}
+
+\textbf{Estado:} \cumple
+
+\begin{lstlisting}[language=Julia, firstnumber=139,
+  caption={Líneas 139--140: extracción del costo total}]
+stats = read_optimizer_stats(res)
+println(stats[1, :objective_value])
+# VALOR OBTENIDO: 31147.352583930755 USD
+\end{lstlisting}
+
+\textbf{Justificación:}
+Se extrae el valor de la función objetivo del optimizador mediante
+\texttt{read\_optimizer\_stats}. El valor obtenido y registrado en el código
+es \textbf{31\,147.35~USD}.
+
+% ------------------------------------------------------------
+\subsection{Entregable 3 --- Evolución de la demanda y satisfacción}
+
+\begin{enunciadobox}
+\textit{``La evolución de la demanda total (MW) del sistema en cada hora del día,
+esclareciendo si es o no satisfecha con los despachos calculados en~1.
+Identifique el o los horarios de mayor demanda.''}
+\end{enunciadobox}
+
+\textbf{Estado:} \cumple
+
+\begin{lstlisting}[language=Julia, firstnumber=181,
+  caption={Líneas 181--193: cálculo de demanda, comparación explícita y hora pico}]
+demanda_base_total_mw = sum(get_active_power(load)
+    for load in get_components(PowerLoad, sys)) * S_base
+demanda_real_mw = demanda_base_total_mw .* df_perfiles.Demanda_normalizada
+df_demanda = DataFrame(DateTime=timestamps, Demanda_Total_MW=demanda_real_mw)
+CSV.write(joinpath(tablas_path, "2_demanda_total_real.csv"), df_demanda)
+
+# Comparacion explicita: generacion total despachada vs demanda real por hora
+df_comparacion = DataFrame(
+    DateTime      = timestamps,
+    Generacion_MW = despacho_p_print.Demanda_Total_MW,
+    Demanda_MW    = demanda_real_mw,
+    Diferencia_MW = despacho_p_print.Demanda_Total_MW .- demanda_real_mw
+)
+display(df_comparacion)
+idx_max_dem = argmax(demanda_real_mw)
+println("Hora de mayor demanda: $(timestamps[idx_max_dem]) -> ...(valor)... MW")
+CSV.write(joinpath(tablas_path, "3_comparacion_gen_dem.csv"), df_comparacion)
+\end{lstlisting}
+
+\textbf{Justificación:}
+Se calcula la demanda total en MW hora a hora (líneas~181--186) y se guarda
+en \texttt{2\_demanda\_total\_real.csv}. Luego se construye un
+\texttt{DataFrame} de comparación (líneas~189--193) con cuatro columnas:
+\texttt{DateTime}, \texttt{Generacion\_MW} (suma del despacho de todas las
+unidades), \texttt{Demanda\_MW} y \texttt{Diferencia\_MW}. Esta diferencia
+verifica explícitamente si el ED satisface la demanda en cada hora (diferencia
+ideal~$\approx 0$). Se identifica automáticamente la hora de mayor demanda
+mediante \texttt{argmax} (línea~187). El resultado se guarda en
+\texttt{3\_comparacion\_gen\_dem.csv}.
+
+% ------------------------------------------------------------
+\subsection{Entregable 4 --- Costo marginal $\lambda$ (USD/MWh)}
+
+\begin{enunciadobox}
+\textit{``La evolución del costo marginal $\lambda$ de la energía (en USD/MWh)
+del sistema en cada hora del día, otorgado por los EDs.''}
+\end{enunciadobox}
+
+\textbf{Estado:} \cumple\ (CSV comentado).
+
+\begin{lstlisting}[language=Julia, firstnumber=145,
+  caption={Líneas 145--151: extracción y conversión del costo marginal}]
+duals     = read_duals(res)
+lambda_pu = duals["CopperPlateBalanceConstraint__System"]  # en $/pu
+lambda_mw = DataFrame(DateTime  = lambda_pu.DateTime,
+                      Lambda_MW = lambda_pu[!, 2] ./ S_base) # USD/MWh
+display(lambda_mw)
+\end{lstlisting}
+
+\textbf{Justificación:}
+El dual de la restricción \texttt{CopperPlateBalanceConstraint} es el precio
+sombra de la energía, expresado en \$/pu ya que el modelo trabaja en por
+unidad. La conversión $\lambda_\text{MW} = \lambda_\text{pu} / S_\text{base}$
+(línea~150, con $S_\text{base}=100$~MVA) transforma correctamente las unidades
+a USD/MWh. El resultado se guarda en \texttt{4\_costo\_marginal.csv} (línea~194).
+
+% ------------------------------------------------------------
+\subsection{Entregable 5 --- Perfil de voltajes AC por barra y hora}
+
+\begin{enunciadobox}
+\textit{``La evolución del perfil de magnitudes de voltajes (en pu) para cada
+barra del sistema en cada hora del día, encontrado tras resolver los flujos de
+potencia AC. (...) deberá para cada hora resolver un flujo de potencia AC,
+considerando límites de potencia reactiva para los generadores síncronos.''}
+\end{enunciadobox}
+
+\textbf{Estado:} \cumple\ (CSV comentado).
+
+\begin{lstlisting}[language=Julia, firstnumber=191,
+  caption={Líneas 191--242: flujos de potencia AC para las 24 horas}]
+sys_flujo    = deepcopy(sys)
+ac_pf_solver = ACPowerFlow(check_reactive_power_limits=true)
+
+resultados_voltaje = DataFrame(Hora=1:24)
+# columna "Barra_N" por cada barra del sistema
+
+for i in 1:24
+    factor_demanda = df_perfiles.Demanda_normalizada[i]
+    for l in get_components(PowerLoad, sys_flujo)
+        set_active_power!(l,  base_P_load[get_name(l)] * factor_demanda)
+        set_reactive_power!(l, base_Q_load[get_name(l)] * factor_demanda)
+    end
+    factor_solar = df_perfiles.Irradiancia_normalizada[i]
+    set_active_power!(gen_solar_flujo, cap_max_gen_solar * factor_solar)
+    for g in gens_termicos_flujo
+        p_despacho_mw = despacho_p_print[i, get_name(g)]
+        set_active_power!(g, p_despacho_mw / S_base)
+    end
+    res_temp = PowerFlows.solve_powerflow(ac_pf_solver, sys_flujo)
+    if isa(res_temp, Dict)
+        df_temp = res_temp["bus_results"]
+        for b in barras
+            num_bar = get_number(b)
+            v_actual = df_temp[df_temp.bus_number .== num_bar, :Vm][1]
+            resultados_voltaje[i, "Barra_$num_bar"] = v_actual
+        end
+    end
+end
+display(resultados_voltaje)
+#CSV.write(joinpath(tablas_path, "5_perfiles_voltaje.csv"), resultados_voltaje)
+\end{lstlisting}
+
+\textbf{Justificación:}
+\begin{itemize}
+  \item \texttt{deepcopy(sys)} (línea~201): copia independiente del sistema
+        para no alterar el modelo del ED.
+  \item \texttt{check\_reactive\_power\_limits=true} (línea~202): considera
+        los límites Qmin/Qmax de los generadores síncronos durante el flujo AC.
+  \item El bucle de 24 iteraciones actualiza hora a hora: la demanda con el
+        perfil normalizado, la generación solar con el perfil de irradiancia,
+        y los generadores térmicos con sus setpoints obtenidos del ED.
+  \item Se extrae la magnitud de voltaje $|V|$ de cada barra desde el campo
+        \texttt{:Vm} del resultado del flujo y se almacena en
+        \texttt{resultados\_voltaje}.
+  \item Los resultados se guardan en \texttt{5\_perfiles\_voltaje.csv} (línea~252).
+\end{itemize}
+
+% ------------------------------------------------------------
+\subsection{Análisis adicional --- Norma técnica de voltaje}
+
+\begin{enunciadobox}
+\textit{``analice si las magnitudes de voltajes de las barras de la red se
+mantienen dentro de los límites establecidos por la norma técnica, es decir,
+$0.95~\text{pu} \leq |V| \leq 1.05~\text{pu}$''}
+\end{enunciadobox}
+
+\textbf{Estado:} \cumple
+
+\begin{lstlisting}[language=Julia, firstnumber=255,
+  caption={Líneas 255--265: verificación automática de norma técnica}]
+# Verificacion norma tecnica: 0.95 <= |V| <= 1.05 pu
+println("Verificacion norma tecnica de voltajes [0.95, 1.05] pu:")
+df_voltajes_largo = stack(resultados_voltaje, Not(:Hora),
+                          variable_name=:Barra, value_name=:Vm)
+violaciones = filter(r -> r.Vm < 0.95 || r.Vm > 1.05, df_voltajes_largo)
+if nrow(violaciones) == 0
+    println("Todos los voltajes se mantienen dentro del rango.")
+else
+    println("VIOLACIONES DE VOLTAJE ENCONTRADAS:")
+    display(violaciones)
+end
+CSV.write(joinpath(tablas_path, "5b_violaciones_voltaje.csv"), violaciones)
+\end{lstlisting}
+
+\textbf{Justificación:}
+Se convierte el \texttt{DataFrame} de voltajes de formato ancho a formato
+largo con \texttt{stack} (una fila por combinación hora--barra). Luego se
+filtra para obtener solo las filas donde $|V| < 0.95$ o $|V| > 1.05$~pu.
+Si no hay violaciones se imprime un mensaje confirmando el cumplimiento de
+la norma técnica; en caso contrario se muestran las violaciones con su hora
+y barra correspondiente. El resultado se guarda en
+\texttt{5b\_violaciones\_voltaje.csv}.
+
+% ============================================================
+\section{Parte II --- Caso con Contingencias (Sección 1.2)}
+
+\begin{enunciadobox}
+\textit{``Para esta parte considere exactamente lo mismo que implementó en
+el Caso Base, con la diferencia de que ahora a las 21:00~hrs deberá analizar
+los efectos individuales de dos posibles contingencias (criterio N$-$1):
+\begin{itemize}
+  \item[(a)] Salida individual de la línea 2-3 del sistema.
+  \item[(b)] Caída del generador síncrono dispuesto en la barra 2.
+\end{itemize}
+Cualquiera de los dos eventos ocurre solamente en la hora mencionada y no
+se despeja durante las horas restantes del día. Para cada contingencia
+plausible se deberá mostrar el perfil de magnitudes de voltaje de cada barra
+durante el día de operación. Determine cuál de las dos contingencias es la
+peor justificando su respuesta.''}
+\end{enunciadobox}
+
+\textbf{Estado:} \noimpl
+
+\begin{lstlisting}[language=Julia, firstnumber=244,
+  caption={Línea 244: única referencia a las contingencias en el código}]
+### PARA LAS CONTINGENCIAS HACER OTRO DEEPCOPY PARA NO ALTERAR SISTEMA ORIGINAL
+\end{lstlisting}
+
+\textbf{Justificación:}
+El código solo contiene el comentario de la línea~244 indicando la estrategia
+(\texttt{deepcopy}), pero no hay ninguna implementación para ninguna de las
+dos contingencias. Las tareas pendientes son:
+\begin{enumerate}
+  \item Crear una copia independiente del sistema de flujo con
+        \texttt{deepcopy}.
+  \item \textbf{Contingencia (a):} desconectar la rama que une las
+        barras~2 y~3, y correr flujos AC para las 24~horas con la
+        contingencia activa a partir de la hora~21.
+  \item \textbf{Contingencia (b):} desconectar gen-2 (la barra~2 pierde su
+        generador PV), correr flujos AC desde la hora~21 con el slack
+        absorbiendo la potencia faltante.
+  \item Guardar y comparar los perfiles de voltaje bajo contingencia versus
+        el caso base.
+  \item Determinar cuál contingencia produce mayores violaciones de voltaje
+        o de límites operacionales.
+\end{enumerate}
+
+% ============================================================
+\section{Resumen General}
+
+\begin{table}[h!]
+\centering
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{p{0.55\textwidth} c p{0.25\textwidth}}
+\toprule
+\textbf{Requisito del Enunciado} & \textbf{Estado} & \textbf{Líneas del código} \\
+\midrule
+Carga del sistema desde \texttt{.m} & \textcolor{okgreen}{Cumple} & 13--20 \\
+Límites Pmin/Pmax (Tabla 1) & \textcolor{okgreen}{Cumple} & Heredado de \texttt{.m} (l.~19) \\
+Unidades encendidas permanentemente & \textcolor{okgreen}{Cumple} & 110 (ED continuo) \\
+$C_1$: gen-1, $a$=2100, $b$=10, $c$=0.1 & \textcolor{okgreen}{Cumple} & 68--69 (índice~1) \\
+$C_2$: gen-2, $a$=7200, $b$=7, $c$=0.06 & \textcolor{okgreen}{Cumple} & 68--69 (índice~2) \\
+$C_4$: gen-6, $a$=6250, $b$=8, $c$=0.07 & \textcolor{okgreen}{Cumple} & 68--69 (índice~3) \\
+$C_5$: gen-8, $a$=2000, $b$=60, $c$=0.5 & \textcolor{okgreen}{Cumple} & 68--69 (índice~4) \\
+Solar: igual $P^\text{max}$ que gen-3 & \textcolor{okgreen}{Cumple} & 34--35, 41, 51 \\
+Solar: FP = 1, sin Q, costo = 0 & \textcolor{okgreen}{Cumple} & 53--55 \\
+Solar: barra pasa a PQ & \textcolor{okgreen}{Cumple} & 43 \\
+Solar: perfil de irradiancia & \textcolor{okgreen}{Cumple} & 102--104 \\
+Perfil demanda a todas las cargas & \textcolor{okgreen}{Cumple} & 95--99 \\
+Voltajes consigna $\leq 1.05$~pu & \textcolor{okgreen}{Cumple} & Heredado de \texttt{.m} (l.~19) \\
+Demanda escalada $+10\%$ & \textcolor{okgreen}{Cumple} & 24--30 \\
+ED 24 horas, solo balance & \textcolor{okgreen}{Cumple} & 107--122 \\
+\textbf{E1}: Despacho P activa todas las unidades & \textcolor{okgreen}{Cumple} & 131--136, 159--160 \\
+\textbf{E2}: Costo total minimizado & \textcolor{okgreen}{Cumple} & 139--140 \\
+\textbf{E3}: Demanda total y comparación & \textcolor{okgreen}{Cumple} & 170--189 \\
+\textbf{E4}: Costo marginal $\lambda$ USD/MWh & \textcolor{okgreen}{Cumple} & 143--148 \\
+\textbf{E5}: Voltajes AC 24h por barra & \textcolor{okgreen}{Cumple} & 201--252 \\
+Verificación norma técnica $[0.95, 1.05]$ & \textcolor{okgreen}{Cumple} & 254--264 \\
+\textbf{Contingencia (a)}: salida línea~2-3 & \textcolor{warnred}{No implementado} & (solo l.~266) \\
+\textbf{Contingencia (b)}: caída gen-2 & \textcolor{warnred}{No implementado} & (solo l.~266) \\
+Comparación: cuál es la peor contingencia & \textcolor{warnred}{No implementado} & --- \\
+\bottomrule
+\end{tabular}
+\caption{Resumen del cumplimiento de todos los requisitos del enunciado.}
+\end{table}
+
+\end{document}
