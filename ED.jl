@@ -157,7 +157,7 @@ mkpath(tablas_path)
 # en cada hora, otorgados por los EDs.
 # Aprovecho de agregar una nueva columna con la suma de generacion por cada fila.
 despacho_p_print.Demanda_Total_MW = sum.(eachrow(despacho_p_print[!, 2:end]))
-CSV.write(joinpath(tablas_path, "1_despachos_generacion.csv"), despacho_p_print)
+#CSV.write(joinpath(tablas_path, "1_despachos_generacion.csv"), despacho_p_print)
 
 # 2. El costo total minimizado al final del d´ıa de ma˜nana, otorgado por los EDs.
 # Resultados para función objetivo - costos minimizados:
@@ -173,14 +173,14 @@ df_demanda = DataFrame(
     DateTime = timestamps,
     Demanda_Total_MW = demanda_real_mw
 )
-CSV.write(joinpath(tablas_path, "2_demanda_total_real.csv"), df_demanda)
+#CSV.write(joinpath(tablas_path, "2_demanda_total_real.csv"), df_demanda)
 
 # Como en el inciso 1. ya agregamos la suma, basta con comparar la suma de generacion por hora
 # con la demanda_total_real anterior.
 
 # 4. La evoluci´on del costo marginal λ de la energ´ıa (en USD/MWh) del sistema en cada
 #   hora del d´ıa, otorgado por los EDs.
-CSV.write(joinpath(tablas_path, "4_costo_marginal.csv"), lambda_mw)
+#CSV.write(joinpath(tablas_path, "4_costo_marginal.csv"), lambda_mw)
 
 
 
@@ -239,4 +239,6 @@ end
 println("\nFlujos de potencia Exitosos")
 display(resultados_voltaje)
 
-CSV.write(joinpath(tablas_path, "5_perfiles_voltaje.csv"), resultados_voltaje)
+#CSV.write(joinpath(tablas_path, "5_perfiles_voltaje.csv"), resultados_voltaje)
+
+### PARA LAS CONTINGENCIAS HACER OTRO DEEPCOPY PARA NO ALTERAR SISTEMA ORIGINAL
