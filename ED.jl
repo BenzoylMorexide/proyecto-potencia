@@ -16,7 +16,7 @@ S_base = get_base_power(sys)
 
 
 # Seleccion modo operación
-tipo_contingencia = "gen" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
+tipo_contingencia = "normal" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
 
 #Ponderación 10% 
 λ_load = 1.10
