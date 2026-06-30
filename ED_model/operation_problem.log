@@ -1,71 +1,71 @@
-┌ Info: 2026-06-29T17:46:11.859 [12292:1]: Initializing Optimization Container For a DecisionModel
-└ @ PowerSimulations C:\Users\josef\.julia\packages\PowerSimulations\hIwTZ\src\operation\decision_model.jl:290
-┌ Info: 2026-06-29T17:46:11.887 [12292:1]: Initializing ModelStoreParams
-└ @ PowerSimulations C:\Users\josef\.julia\packages\PowerSimulations\hIwTZ\src\operation\decision_model.jl:296
-┌ Info: 2026-06-29T17:46:11.888 [12292:1]: Instantiating Network Model
-└ @ PowerSimulations C:\Users\josef\.julia\packages\PowerSimulations\hIwTZ\src\operation\decision_model.jl:305
-┌ Info: 2026-06-29T17:46:11.891 [12292:1]: Validating connectivity with depth first search (network traversal)
-└ @ PowerNetworkMatrices C:\Users\josef\.julia\packages\PowerNetworkMatrices\YBcAg\src\system_utils.jl:12
-┌ Info: 2026-06-29T17:46:11.897 [12292:1]: Make Initial Conditions Model
-└ @ PowerSimulations C:\Users\josef\.julia\packages\PowerSimulations\hIwTZ\src\operation\operation_model_interface.jl:193
-┌ Info: 2026-06-29T17:46:11.898 [12292:1]: No initial conditions in the model
-└ @ PowerSimulations C:\Users\josef\.julia\packages\PowerSimulations\hIwTZ\src\operation\operation_model_interface.jl:138
-┌ Info: 2026-06-29T17:46:11.993 [12292:1]: 
+┌ Info: 2026-06-30T18:58:38.823 [20292:1]: Initializing Optimization Container For a DecisionModel
+└ @ PowerSimulations D:\Julia\depot\packages\PowerSimulations\hIwTZ\src\operation\decision_model.jl:290
+┌ Info: 2026-06-30T18:58:38.828 [20292:1]: Initializing ModelStoreParams
+└ @ PowerSimulations D:\Julia\depot\packages\PowerSimulations\hIwTZ\src\operation\decision_model.jl:296
+┌ Info: 2026-06-30T18:58:38.828 [20292:1]: Instantiating Network Model
+└ @ PowerSimulations D:\Julia\depot\packages\PowerSimulations\hIwTZ\src\operation\decision_model.jl:305
+┌ Info: 2026-06-30T18:58:38.829 [20292:1]: Validating connectivity with depth first search (network traversal)
+└ @ PowerNetworkMatrices D:\Julia\depot\packages\PowerNetworkMatrices\YBcAg\src\system_utils.jl:12
+┌ Info: 2026-06-30T18:58:38.829 [20292:1]: Make Initial Conditions Model
+└ @ PowerSimulations D:\Julia\depot\packages\PowerSimulations\hIwTZ\src\operation\operation_model_interface.jl:193
+┌ Info: 2026-06-30T18:58:38.829 [20292:1]: No initial conditions in the model
+└ @ PowerSimulations D:\Julia\depot\packages\PowerSimulations\hIwTZ\src\operation\operation_model_interface.jl:138
+┌ Info: 2026-06-30T18:58:38.896 [20292:1]: 
 │ ─────────────────────────────────────────────────────────────────────────────────────
 │                                             Time                    Allocations      
 │                                    ───────────────────────   ────────────────────────
-│          Tot / % measured:              145ms /  95.1%           3.09MiB /  99.4%    
+│          Tot / % measured:             74.2ms /  98.8%           3.08MiB /  99.4%    
 │ 
 │ Section                    ncalls     time    %tot     avg     alloc    %tot      avg
 │ ─────────────────────────────────────────────────────────────────────────────────────
-│ Problem GenericOpProblem        1    138ms  100.0%   138ms   3.07MiB  100.0%  3.07MiB
-│   Build pre-step                1   34.5ms   25.0%  34.5ms   77.4KiB    2.5%  77.4KiB
-│   PowerLoad                     2   31.9ms   23.2%  16.0ms   1.10MiB   35.7%   562KiB
-│   ThermalStandard               2   17.3ms   12.6%  8.67ms   1.13MiB   36.9%   580KiB
-│   CopperPlatePowerModel         1   10.7ms    7.8%  10.7ms    116KiB    3.7%   116KiB
-│   Line                          2   4.48ms    3.3%  2.24ms    208KiB    6.6%   104KiB
-│   RenewableDispatch             2   4.07ms    3.0%  2.03ms    118KiB    3.8%  59.2KiB
-│   Model Initialization          1   1.17ms    0.9%  1.17ms   24.5KiB    0.8%  24.5KiB
-│   Objective                     1    630μs    0.5%   630μs   37.3KiB    1.2%  37.3KiB
-│   Transformer2W                 2    626μs    0.5%   313μs   37.3KiB    1.2%  18.6KiB
-│   TapTransformer                2   46.5μs    0.0%  23.2μs      448B    0.0%     224B
-│   RenewableFix                  2   30.0μs    0.0%  15.0μs      448B    0.0%     224B
-│   InterruptiblePowerLoad        2   26.8μs    0.0%  13.4μs      448B    0.0%     224B
-│   TwoTerminalHVDCLine           2   21.9μs    0.0%  10.9μs      448B    0.0%     224B
-│   Services                      2   19.3μs    0.0%  9.65μs     0.00B    0.0%    0.00B
+│ Problem GenericOpProblem        1   73.3ms  100.0%  73.3ms   3.07MiB  100.0%  3.07MiB
+│   PowerLoad                     2   35.3ms   48.2%  17.6ms   1.10MiB   35.8%   562KiB
+│   ThermalStandard               2   7.50ms   10.2%  3.75ms   1.13MiB   36.9%   580KiB
+│   Line                          2   5.66ms    7.7%  2.83ms    208KiB    6.6%   104KiB
+│   Build pre-step                1   5.64ms    7.7%  5.64ms   76.5KiB    2.4%  76.5KiB
+│   RenewableDispatch             2   4.07ms    5.5%  2.03ms    118KiB    3.8%  59.2KiB
+│   CopperPlatePowerModel         1   2.84ms    3.9%  2.84ms    116KiB    3.7%   116KiB
+│   Transformer2W                 2   1.45ms    2.0%   726μs   37.3KiB    1.2%  18.6KiB
+│   Model Initialization          1    238μs    0.3%   238μs   23.8KiB    0.8%  23.8KiB
+│   Objective                     1   91.3μs    0.1%  91.3μs   37.3KiB    1.2%  37.3KiB
+│   TapTransformer                2   42.6μs    0.1%  21.3μs      448B    0.0%     224B
+│   TwoTerminalHVDCLine           2   34.2μs    0.0%  17.1μs      448B    0.0%     224B
+│   InterruptiblePowerLoad        2   33.9μs    0.0%  16.9μs      448B    0.0%     224B
+│   RenewableFix                  2   27.7μs    0.0%  13.8μs      448B    0.0%     224B
+│   Services                      2   1.80μs    0.0%   900ns     0.00B    0.0%    0.00B
 │ ─────────────────────────────────────────────────────────────────────────────────────
-└ @ PowerSimulations C:\Users\josef\.julia\packages\PowerSimulations\hIwTZ\src\operation\decision_model.jl:353
-┌ Info: 2026-06-29T17:46:11.998 [12292:1]: GenericOpProblem optimizer set to: Ipopt
-└ @ PowerSimulations C:\Users\josef\.julia\packages\PowerSimulations\hIwTZ\src\operation\operation_model_interface.jl:309
-┌ Info: 2026-06-29T17:46:11.999 [12292:1]: Checking Numerical Bounds
-└ @ PowerSimulations C:\Users\josef\.julia\packages\PowerSimulations\hIwTZ\src\operation\operation_model_interface.jl:312
-┌ Info: 2026-06-29T17:46:12.001 [12292:1]: Variable bounds range is [0.55 1.0]
-└ @ PowerSimulations C:\Users\josef\.julia\packages\PowerSimulations\hIwTZ\src\operation\operation_model_interface.jl:270
-┌ Info: 2026-06-29T17:46:12.003 [12292:1]: Constraint coefficient bounds range is [1.0 1.0]
-└ @ PowerSimulations C:\Users\josef\.julia\packages\PowerSimulations\hIwTZ\src\operation\operation_model_interface.jl:280
-┌ Info: 2026-06-29T17:46:12.004 [12292:1]: Constraint right-hand-side bounds [0.045000000000000005 2.8490000000000006]
-└ @ PowerSimulations C:\Users\josef\.julia\packages\PowerSimulations\hIwTZ\src\operation\operation_model_interface.jl:289
-┌ Info: 2026-06-29T17:46:12.197 [12292:1]: Serialized time series data to c:\Users\josef\OneDrive\Escritorio\proyecto-potencia\ED_model\system-00c5d2da-5aef-4da7-9579-af283b380355_time_series_storage.h5.
-└ @ InfrastructureSystems C:\Users\josef\.julia\packages\InfrastructureSystems\9btGb\src\time_series_storage.jl:98
-┌ Info: 2026-06-29T17:46:18.634 [12292:1]: Serialized System to c:\Users\josef\OneDrive\Escritorio\proyecto-potencia\ED_model\system-00c5d2da-5aef-4da7-9579-af283b380355.json
-└ @ PowerSystems C:\Users\josef\.julia\packages\PowerSystems\xh3fM\src\base.jl:299
-┌ Info: 2026-06-29T17:46:18.657 [12292:1]: Serialized System metadata to c:\Users\josef\OneDrive\Escritorio\proyecto-potencia\ED_model\system-00c5d2da-5aef-4da7-9579-af283b380355_metadata.json
-└ @ PowerSystems C:\Users\josef\.julia\packages\PowerSystems\xh3fM\src\base.jl:324
-┌ Info: 2026-06-29T17:46:18.661 [12292:1]: Serialized OperationModel to
-│   bin_file_name = c:\Users\josef\OneDrive\Escritorio\proyecto-potencia\ED_model\model.bin
-└ @ PowerSimulations C:\Users\josef\.julia\packages\PowerSimulations\hIwTZ\src\operation\operation_model_serialization.jl:67
-┌ Info: 2026-06-29T17:46:18.690 [12292:1]: Serialize ProblemResults to c:\Users\josef\OneDrive\Escritorio\proyecto-potencia\ED_model\problem_results.bin
-└ @ PowerSimulations C:\Users\josef\.julia\packages\PowerSimulations\hIwTZ\src\operation\problem_results.jl:256
-┌ Info: 2026-06-29T17:46:18.690 [12292:1]: 
+└ @ PowerSimulations D:\Julia\depot\packages\PowerSimulations\hIwTZ\src\operation\decision_model.jl:353
+┌ Info: 2026-06-30T18:58:38.899 [20292:1]: GenericOpProblem optimizer set to: Ipopt
+└ @ PowerSimulations D:\Julia\depot\packages\PowerSimulations\hIwTZ\src\operation\operation_model_interface.jl:309
+┌ Info: 2026-06-30T18:58:38.899 [20292:1]: Checking Numerical Bounds
+└ @ PowerSimulations D:\Julia\depot\packages\PowerSimulations\hIwTZ\src\operation\operation_model_interface.jl:312
+┌ Info: 2026-06-30T18:58:38.900 [20292:1]: Variable bounds range is [0.55 1.0]
+└ @ PowerSimulations D:\Julia\depot\packages\PowerSimulations\hIwTZ\src\operation\operation_model_interface.jl:270
+┌ Info: 2026-06-30T18:58:38.901 [20292:1]: Constraint coefficient bounds range is [1.0 1.0]
+└ @ PowerSimulations D:\Julia\depot\packages\PowerSimulations\hIwTZ\src\operation\operation_model_interface.jl:280
+┌ Info: 2026-06-30T18:58:38.902 [20292:1]: Constraint right-hand-side bounds [0.045000000000000005 2.8490000000000006]
+└ @ PowerSimulations D:\Julia\depot\packages\PowerSimulations\hIwTZ\src\operation\operation_model_interface.jl:289
+┌ Info: 2026-06-30T18:58:39.065 [20292:1]: Serialized time series data to d:\Universita\Sistemas de potencia\Proyecto\Codigo Proyecto\ED_model\system-8b181d6a-3a51-410d-a469-883e744e9d58_time_series_storage.h5.
+└ @ InfrastructureSystems D:\Julia\depot\packages\InfrastructureSystems\9btGb\src\time_series_storage.jl:98
+┌ Info: 2026-06-30T18:58:44.893 [20292:1]: Serialized System to d:\Universita\Sistemas de potencia\Proyecto\Codigo Proyecto\ED_model\system-8b181d6a-3a51-410d-a469-883e744e9d58.json
+└ @ PowerSystems D:\Julia\depot\packages\PowerSystems\xh3fM\src\base.jl:299
+┌ Info: 2026-06-30T18:58:44.898 [20292:1]: Serialized System metadata to d:\Universita\Sistemas de potencia\Proyecto\Codigo Proyecto\ED_model\system-8b181d6a-3a51-410d-a469-883e744e9d58_metadata.json
+└ @ PowerSystems D:\Julia\depot\packages\PowerSystems\xh3fM\src\base.jl:324
+┌ Info: 2026-06-30T18:58:44.900 [20292:1]: Serialized OperationModel to
+│   bin_file_name = d:\Universita\Sistemas de potencia\Proyecto\Codigo Proyecto\ED_model\model.bin
+└ @ PowerSimulations D:\Julia\depot\packages\PowerSimulations\hIwTZ\src\operation\operation_model_serialization.jl:67
+┌ Info: 2026-06-30T18:58:44.922 [20292:1]: Serialize ProblemResults to d:\Universita\Sistemas de potencia\Proyecto\Codigo Proyecto\ED_model\problem_results.bin
+└ @ PowerSimulations D:\Julia\depot\packages\PowerSimulations\hIwTZ\src\operation\problem_results.jl:256
+┌ Info: 2026-06-30T18:58:44.922 [20292:1]: 
 │ ───────────────────────────────────────────────────────────────────────────────
 │                                       Time                    Allocations      
 │                              ───────────────────────   ────────────────────────
-│       Tot / % measured:           6.70s / 100.0%           69.2MiB /  99.9%    
+│       Tot / % measured:           6.02s / 100.0%           65.1MiB /  99.9%    
 │ 
 │ Section              ncalls     time    %tot     avg     alloc    %tot      avg
 │ ───────────────────────────────────────────────────────────────────────────────
-│ Serialize                 1    6.52s   97.3%   6.52s   68.0MiB   98.3%  68.0MiB
-│ Solve                     1    169ms    2.5%   169ms   1.04MiB    1.5%  1.04MiB
-│ Results processing        1   13.6ms    0.2%  13.6ms    128KiB    0.2%   128KiB
+│ Serialize                 1    5.87s   97.5%   5.87s   63.9MiB   98.2%  63.9MiB
+│ Solve                     1    141ms    2.3%   141ms   1.04MiB    1.6%  1.04MiB
+│ Results processing        1   7.40ms    0.1%  7.40ms    127KiB    0.2%   127KiB
 │ ───────────────────────────────────────────────────────────────────────────────
-└ @ PowerSimulations C:\Users\josef\.julia\packages\PowerSimulations\hIwTZ\src\operation\decision_model.jl:473
+└ @ PowerSimulations D:\Julia\depot\packages\PowerSimulations\hIwTZ\src\operation\decision_model.jl:473
