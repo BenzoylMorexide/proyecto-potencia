@@ -16,7 +16,7 @@ S_base = get_base_power(sys)
 
 
 # Seleccion modo operación
-tipo_contingencia = "normal" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
+tipo_contingencia = "gen" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
 
 #Ponderación 10% 
 λ_load = 1.10
@@ -203,7 +203,7 @@ gen_solar_flujo = get_component(RenewableDispatch, sys_flujo, "gen-solar")
 # en el loop de aca abajo se corre para cada hora un flujo. Para eso, primero
 # se actualizan los valores de las demandas para esa hora según el .csv entregado
 for i in 1:24
-    if i == 21
+    if i == 22
         println("\n\nSon las 21:00\n")
         if tipo_contingencia=="line"
             line_2_3 = get_component(ACBranch, sys_flujo, "2-3-i_3")
@@ -212,12 +212,12 @@ for i in 1:24
         elseif tipo_contingencia == "gen"
             gen_barra2 = get_component(ThermalStandard, sys, "gen-2")
             remove_component!(sys_flujo, gen_barra2)
-            gens_termicos_flujo = sort!(collect(get_components(ThermalStandard, sys_flujo)), by=x -> get_name(x))
+            global gens_termicos_flujo = sort!(collect(get_components(ThermalStandard, sys_flujo)), by=x -> get_name(x))
             println("Contingencia aplicada: caida generador barra 2\n\n")
         elseif tipo_contingencia == "normal"
             println("Modo de operación normal\n\n")
         else
-            tipo_contingencia = "normal"
+            global tipo_contingencia = "normal"
             println("Modo de operación no reconocido, se utiliza modo normal por defecto\n\n")
         end
     end
@@ -249,7 +249,7 @@ for i in 1:24
             resultados_voltaje[i, "Barra_$num_bar"] = v_actual
         end
     else
-        println("OJITO PIOJO: El flujo de potencia no convergió en la Hora $i") # XDDDDDDDDD
+        println("OJITO PIOJO: El flujo de potencia no convergió en la Hora $(i-1)") # XDDDDDDDDD
     end
 end
 println("\nFlujos de potencia Exitosos")
