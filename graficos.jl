@@ -56,10 +56,18 @@ for contingencia in tipo_contingencia
     sorted_idx = sortperm(min_voltages)
     barras_criticas = barras_cols[sorted_idx[1:4]] # Top 4 peores barras
 
-    p3 = plot(title="Perfil de Tension - Barras Criticas",
+    if contingencia == "line"
+        tipo_titulo = "Caida de línea 2-3"
+    elseif contingencia == "gen"
+        tipo_titulo = "Caída de generador 2"
+    else 
+        tipo_titulo = "Funcionamiento normal"
+    end
+
+    p3 = plot(title="Perfil de Tension de barras Criticas - $(tipo_titulo)",
             xlabel="Hora del dia",
             ylabel="Magnitud de Tension (pu)",
-            legend=:bottomright)
+            legend=:bottomleft)
     # Límites de norma técnica
     hline!(p3, [0.95, 1.05], color=:red, linestyle=:dash, label="Límites Norma", linewidth=2)
 
@@ -68,37 +76,110 @@ for contingencia in tipo_contingencia
         plot!(p3, horas, df_voltaje[!, b], label=replace(b, "_" => " "), linewidth=2, color=colores_b[i], marker=:x)
     end
     # Ajustar el límite y (y-axis) para visualizar mejor si no llegan a 0.95
-    ylims!(p3, (0.94, 1.06))
+    # ylims!(p3, (0.94, 1.06))
     savefig(p3, joinpath(graficos_path, "3_perfiles_tension_criticos_modo_$(contingencia).png"))
 end
 
 
 # 4. Gráfico de Tensiones (Todas las barras)
-tipo_contingencia = ["line", "gen", "normal"]
 
 for contingencia in tipo_contingencia
     df_voltaje = CSV.read(joinpath(tablas_path, "5_perfiles_voltaje_modo_$(contingencia).csv"), DataFrame)
-    # Identificar barras críticas (las que tienen los valores mínimos)
-    # barras_cols = names(df_voltaje)[2:end]
-    # min_voltages = [minimum(df_voltaje[!, b]) for b in barras_cols]
-    # # Ordenar de menor a mayor para obtener las más críticas
-    # sorted_idx = sortperm(min_voltages)
-    # barras_criticas = barras_cols[sorted_idx[1:4]] # Top 4 peores barras
 
-    p4 = plot(title="Perfil de Tension - Barras Criticas",
+    if contingencia == "line"
+        tipo_titulo = "Caida de línea 2-3"
+    elseif contingencia == "gen"
+        tipo_titulo = "Caída de generador 2"
+    else 
+        tipo_titulo = "Funcionamiento normal"
+    end
+
+
+    p4 = plot(title="Perfil de Tension de Barras - $(tipo_titulo)",
             xlabel="Hora del dia",
             ylabel="Magnitud de Tension (pu)",
-            legend=:outerright)
+            legend=:outerbottom,
+            legend_column = 5,
+            legendfontsize = 7,
+            size = (720, 480))
     # Límites de norma técnica
     hline!(p4, [0.95, 1.05], color=:red, linestyle=:dash, label="Límites Norma", linewidth=2)
 
-    # colores_b = [:blue, :green, :orange, :magenta]
     for (i, b) in enumerate(names(df_voltaje)[2:end])
         plot!(p4, horas, df_voltaje[!, b], label=replace(b, "_" => " "), linewidth=2)
     end
-    # Ajustar el límite y (y-axis) para visualizar mejor si no llegan a 0.95
-    # ylims!(p4, (0.95, 1.05))
-    savefig(p4, joinpath(graficos_path, "4_perfiles_tension_criticos_modo_$(contingencia).png"))
+    savefig(p4, joinpath(graficos_path, "4_perfiles_tension_completo_modo_$(contingencia).png"))
 end
+
+
+# 5. Gráfico de Tensiones en periodo de contingencia (Todas las barras)
+
+for contingencia in tipo_contingencia
+    df_voltaje = CSV.read(joinpath(tablas_path, "5_perfiles_voltaje_modo_$(contingencia).csv"), DataFrame)
+
+    if contingencia == "line"
+        tipo_titulo = "Caida de línea 2-3"
+    elseif contingencia == "gen"
+        tipo_titulo = "Caída de generador 2"
+    else 
+        tipo_titulo = "Funcionamiento normal"
+    end
+
+    p5 = plot(title="Perfil de Tension de Barras - $(tipo_titulo)",
+            xlabel="Hora del dia",
+            ylabel="Magnitud de Tension (pu)",
+            legend=:outerbottom,
+            legend_column = 5,
+            legendfontsize = 7,
+            size = (720, 480))
+    # Límites de norma técnica
+    hline!(p5, [0.95, 1.05], color=:red, linestyle=:dash, label="Límites Norma", linewidth=2)
+
+    for (i, b) in enumerate(names(df_voltaje)[2:end])
+        plot!(p5, horas, df_voltaje[!, b], label=replace(b, "_" => " "), linewidth=2)
+    end
+    # límite de plot para efecto de zoom
+    xlims!(p5, (18, 23))
+    savefig(p5, joinpath(graficos_path, "5_perfiles_tension_zoom_modo_$(contingencia).png"))
+end
+
+
+# 6. Gráfico de Tensiones en periodo de contingencia (Barras fuera de norma)
+
+for contingencia in tipo_contingencia
+    df_voltaje = CSV.read(joinpath(tablas_path, "5_perfiles_voltaje_modo_$(contingencia).csv"), DataFrame)
+
+    if contingencia == "line"
+        tipo_titulo = "Caida de línea 2-3"
+    elseif contingencia == "gen"
+        tipo_titulo = "Caída de generador 2"
+    else 
+        tipo_titulo = "Funcionamiento normal"
+    end
+
+    p6 = plot(title="Perfil de Tension de Barras - $(tipo_titulo)",
+            xlabel="Hora del dia",
+            ylabel="Magnitud de Tension (pu)",
+            legend=:outerbottom,
+            legend_column = 5,
+            legendfontsize = 7,
+            size = (720, 480))
+    # Límites de norma técnica
+    hline!(p6, [0.95, 1.05], color=:red, linestyle=:dash, label="Límites Norma", linewidth=2)
+
+    for (i, b) in enumerate(names(df_voltaje)[2:end])
+        #sólo aquellos que estén fuera de norma
+        voltajes = df_voltaje[!, b]
+        if any(voltajes .< 0.95) || any(voltajes .> 1.05)
+            plot!(p6, horas, voltajes, label=replace(b, "_" => " "), linewidth=2)
+        end
+    end
+    # límite de plot para efecto de zoom
+    xlims!(p6, (18, 23))
+    savefig(p6, joinpath(graficos_path, "6_perfiles_tension_critivos_modo_$(contingencia).png"))
+end
+
+
+
 
 println("Graficos generados exitosamente en la carpeta '$graficos_path'.")
