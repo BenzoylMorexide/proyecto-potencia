@@ -44,27 +44,61 @@ p2 = plot(horas, df_lambda.Lambda_MW,
 savefig(p2, joinpath(graficos_path, "2_costo_marginal.png"))
 
 # 3. Gráfico de Tensiones (Barras críticas)
-df_voltaje = CSV.read(joinpath(tablas_path, "5_perfiles_voltaje.csv"), DataFrame)
-# Identificar barras críticas (las que tienen los valores mínimos)
-barras_cols = names(df_voltaje)[2:end]
-min_voltages = [minimum(df_voltaje[!, b]) for b in barras_cols]
-# Ordenar de menor a mayor para obtener las más críticas
-sorted_idx = sortperm(min_voltages)
-barras_criticas = barras_cols[sorted_idx[1:4]] # Top 4 peores barras
+tipo_contingencia = ["line", "gen", "normal"]
 
-p3 = plot(title="Perfil de Tension - Barras Criticas",
-          xlabel="Hora del dia",
-          ylabel="Magnitud de Tension (pu)",
-          legend=:bottomright)
-# Límites de norma técnica
-hline!(p3, [0.95, 1.05], color=:red, linestyle=:dash, label="Límites Norma", linewidth=2)
 
-colores_b = [:blue, :green, :orange, :magenta]
-for (i, b) in enumerate(barras_criticas)
-    plot!(p3, horas, df_voltaje[!, b], label=replace(b, "_" => " "), linewidth=2, color=colores_b[i], marker=:x)
+for contingencia in tipo_contingencia
+    df_voltaje = CSV.read(joinpath(tablas_path, "5_perfiles_voltaje_modo_$(contingencia).csv"), DataFrame)
+    # Identificar barras críticas (las que tienen los valores mínimos)
+    barras_cols = names(df_voltaje)[2:end]
+    min_voltages = [minimum(df_voltaje[!, b]) for b in barras_cols]
+    # Ordenar de menor a mayor para obtener las más críticas
+    sorted_idx = sortperm(min_voltages)
+    barras_criticas = barras_cols[sorted_idx[1:4]] # Top 4 peores barras
+
+    p3 = plot(title="Perfil de Tension - Barras Criticas",
+            xlabel="Hora del dia",
+            ylabel="Magnitud de Tension (pu)",
+            legend=:bottomright)
+    # Límites de norma técnica
+    hline!(p3, [0.95, 1.05], color=:red, linestyle=:dash, label="Límites Norma", linewidth=2)
+
+    colores_b = [:blue, :green, :orange, :magenta]
+    for (i, b) in enumerate(barras_criticas)
+        plot!(p3, horas, df_voltaje[!, b], label=replace(b, "_" => " "), linewidth=2, color=colores_b[i], marker=:x)
+    end
+    # Ajustar el límite y (y-axis) para visualizar mejor si no llegan a 0.95
+    ylims!(p3, (0.94, 1.06))
+    savefig(p3, joinpath(graficos_path, "3_perfiles_tension_criticos_modo_$(contingencia).png"))
 end
-# Ajustar el límite y (y-axis) para visualizar mejor si no llegan a 0.95
-ylims!(p3, (0.94, 1.06))
-savefig(p3, joinpath(graficos_path, "3_perfiles_tension_criticos.png"))
+
+
+# 4. Gráfico de Tensiones (Todas las barras)
+tipo_contingencia = ["line", "gen", "normal"]
+
+for contingencia in tipo_contingencia
+    df_voltaje = CSV.read(joinpath(tablas_path, "5_perfiles_voltaje_modo_$(contingencia).csv"), DataFrame)
+    # Identificar barras críticas (las que tienen los valores mínimos)
+    # barras_cols = names(df_voltaje)[2:end]
+    # min_voltages = [minimum(df_voltaje[!, b]) for b in barras_cols]
+    # # Ordenar de menor a mayor para obtener las más críticas
+    # sorted_idx = sortperm(min_voltages)
+    # barras_criticas = barras_cols[sorted_idx[1:4]] # Top 4 peores barras
+
+    p4 = plot(title="Perfil de Tension - Barras Criticas",
+            xlabel="Hora del dia",
+            ylabel="Magnitud de Tension (pu)",
+            legend=:outerright)
+    # Límites de norma técnica
+    hline!(p4, [0.95, 1.05], color=:red, linestyle=:dash, label="Límites Norma", linewidth=2)
+
+    # colores_b = [:blue, :green, :orange, :magenta]
+    for (i, b) in enumerate(names(df_voltaje)[2:end])
+        plot!(p4, horas, df_voltaje[!, b], label=replace(b, "_" => " "), linewidth=2)
+    end
+    # Ajustar el límite y (y-axis) para visualizar mejor si no llegan a 0.95
+    # ylims!(p4, (0.95, 1.05))
+    savefig(p4, joinpath(graficos_path, "4_perfiles_tension_criticos_modo_$(contingencia).png"))
+end
 
 println("Graficos generados exitosamente en la carpeta '$graficos_path'.")

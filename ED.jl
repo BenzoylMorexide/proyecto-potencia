@@ -14,6 +14,10 @@ file_path_static = joinpath(@__DIR__, "IEEE_14_Bus_Proyecto.m")
 sys = System(file_path_static)
 S_base = get_base_power(sys)
 
+
+# Seleccion modo operación
+tipo_contingencia = "gen" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
+
 #Ponderación 10% 
 λ_load = 1.10
 cargas = collect(get_components(PowerLoad, sys));
@@ -199,6 +203,24 @@ gen_solar_flujo = get_component(RenewableDispatch, sys_flujo, "gen-solar")
 # en el loop de aca abajo se corre para cada hora un flujo. Para eso, primero
 # se actualizan los valores de las demandas para esa hora según el .csv entregado
 for i in 1:24
+    if i == 22
+        println("\n\nSon las 21:00\n")
+        if tipo_contingencia=="line"
+            line_2_3 = get_component(ACBranch, sys_flujo, "2-3-i_3")
+            remove_component!(sys_flujo, line_2_3)
+            println("Contingencia aplicada: salida linea 2-3\n\n")
+        elseif tipo_contingencia == "gen"
+            gen_barra2 = get_component(ThermalStandard, sys, "gen-2")
+            remove_component!(sys_flujo, gen_barra2)
+            global gens_termicos_flujo = sort!(collect(get_components(ThermalStandard, sys_flujo)), by=x -> get_name(x))
+            println("Contingencia aplicada: caida generador barra 2\n\n")
+        elseif tipo_contingencia == "normal"
+            println("Modo de operación normal\n\n")
+        else
+            global tipo_contingencia = "normal"
+            println("Modo de operación no reconocido, se utiliza modo normal por defecto\n\n")
+        end
+    end
 
    factor_demanda = df_perfiles.Demanda_normalizada[i]
     for l in get_components(PowerLoad, sys_flujo)
@@ -227,13 +249,13 @@ for i in 1:24
             resultados_voltaje[i, "Barra_$num_bar"] = v_actual
         end
     else
-        println("OJITO PIOJO: El flujo de potencia no convergió en la Hora $i")
+        println("OJITO PIOJO: El flujo de potencia no convergió en la Hora $(i-1)") # XDDDDDDDDD
     end
 end
 println("\nFlujos de potencia Exitosos")
 display(resultados_voltaje)
 
-CSV.write(joinpath(tablas_path, "5_perfiles_voltaje.csv"), resultados_voltaje)
+CSV.write(joinpath(tablas_path, "5_perfiles_voltaje_modo_$(tipo_contingencia).csv"), resultados_voltaje)
 
 # Verificación norma técnica: 0.95 <= |V| <= 1.05 pu
 println("\nVerificación norma técnica de voltajes [0.95, 1.05] pu:")
@@ -245,6 +267,6 @@ else
     println("⚠ VIOLACIONES DE VOLTAJE ENCONTRADAS:")
     display(violaciones)
 end
-CSV.write(joinpath(tablas_path, "5b_violaciones_voltaje.csv"), violaciones)
+CSV.write(joinpath(tablas_path, "5b_violaciones_voltaje_modo_$(tipo_contingencia).csv"), violaciones)
 
 ### PARA LAS CONTINGENCIAS HACER OTRO DEEPCOPY PARA NO ALTERAR SISTEMA ORIGINAL
