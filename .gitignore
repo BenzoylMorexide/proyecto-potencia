@@ -2,6 +2,5 @@
 *.cov
 *.jl.cov
 *.jl.mem
-.gitignore
 .vscode
-ED_model
+ED_model/
