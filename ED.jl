@@ -16,7 +16,7 @@ S_base = get_base_power(sys)
 
 
 # Seleccion modo operación
-tipo_contingencia = "gen" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
+tipo_contingencia = "normal" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
 
 #Ponderación 10% 
 λ_load = 1.10
@@ -186,6 +186,8 @@ CSV.write(joinpath(tablas_path, "4_costo_marginal.csv"), lambda_mw)
 
 println("FLujo potencia iniciado")
 
+
+
 sys_flujo = deepcopy(sys)
 ac_pf_solver = ACPowerFlow(check_reactive_power_limits = true)
 
@@ -199,6 +201,12 @@ base_P_load = Dict(get_name(l) => get_active_power(l) for l in get_components(Po
 base_Q_load = Dict(get_name(l) => get_reactive_power(l) for l in get_components(PowerLoad, sys_flujo))
 gens_termicos_flujo = sort!(collect(get_components(ThermalStandard, sys_flujo)), by=x -> get_name(x))
 gen_solar_flujo = get_component(RenewableDispatch, sys_flujo, "gen-solar")
+
+# Crear tabla para comprobar la desviación de potencia activa de TODOS los generadores
+analisis_compensacion = DataFrame(Hora = 1:24)
+for g in gens_termicos_flujo
+    analisis_compensacion[!, "Dev_MW_" * get_name(g)] = zeros(Float64, 24)
+end
 
 # en el loop de aca abajo se corre para cada hora un flujo. Para eso, primero
 # se actualizan los valores de las demandas para esa hora según el .csv entregado
@@ -241,6 +249,23 @@ for i in 1:24
     res_temp = PowerFlows.solve_powerflow(ac_pf_solver, sys_flujo)
     if isa(res_temp, Dict)
         df_temp = res_temp["bus_results"]
+
+        for g in gens_termicos_flujo
+            nombre = get_name(g)
+            num_bus = get_number(get_bus(g))
+            
+            # 1. Lo que ordenó el ED (Setpoint)
+            p_ordenada = despacho_p_print[i, nombre]
+            
+            # 2. Lo que realmente inyectó el Flujo AC
+            p_real_pf_mw = df_temp[df_temp.bus_number .== num_bus, :P_gen][1]
+            
+            # 3. Guardamos la desviación (Debería ser > 0 solo para la Slack)
+            desviacion = p_real_pf_mw - p_ordenada
+            
+            # Limpiamos ruido numérico microscópico (ej. 1e-10) para que la tabla sea legible
+            analisis_compensacion[i, "Dev_MW_" * nombre] = abs(desviacion) < 1e-5 ? 0.0 : desviacion
+        end
         
         for b in barras
             num_bar = get_number(b)
@@ -268,5 +293,9 @@ else
     display(violaciones)
 end
 CSV.write(joinpath(tablas_path, "5b_violaciones_voltaje_modo_$(tipo_contingencia).csv"), violaciones)
+
+display(analisis_compensacion)
+
+CSV.write(joinpath(tablas_path, "6_analisis_compensacion.csv"), analisis_compensacion)
 
 ### PARA LAS CONTINGENCIAS HACER OTRO DEEPCOPY PARA NO ALTERAR SISTEMA ORIGINAL
