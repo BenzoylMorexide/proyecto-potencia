@@ -164,7 +164,7 @@ df_demanda = DataFrame(
 )
 CSV.write(joinpath(tablas_path, "2_demanda_total_real.csv"), df_demanda)
 
-# Comparación explícita: generación total despachada vs demanda real por hora
+# generación total despachada vs demanda real por hora
 df_comparacion = DataFrame(
     DateTime      = timestamps,
     Generacion_MW = despacho_p_print.Demanda_Total_MW,
@@ -304,16 +304,11 @@ for i in 1:24
             nombre = get_name(g)
             num_bus = get_number(get_bus(g))
             
-            # 1. Lo que ordenó el ED (Setpoint)
-            p_ordenada = despacho_p_print[i, nombre]
-            
-            # 2. Lo que realmente inyectó el Flujo AC
-            p_real_pf_mw = df_temp[df_temp.bus_number .== num_bus, :P_gen][1]
-            
-            # 3. Guardamos la desviación (Debería ser > 0 solo para la Slack)
+            p_ordenada = despacho_p_print[i, nombre]            
+            p_real_pf_mw = df_temp[df_temp.bus_number .== num_bus, :P_gen][1]            
             desviacion = p_real_pf_mw - p_ordenada
             
-            # Limpiamos ruido numérico microscópico (ej. 1e-10) para que la tabla sea legible
+            # mandar a cero los números muy chicos
             analisis_compensacion[i, "Dev_MW_" * nombre] = abs(desviacion) < 1e-5 ? 0.0 : desviacion
         end
         
