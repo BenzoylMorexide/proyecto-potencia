@@ -2,5 +2,4 @@
 *.cov
 *.jl.cov
 *.jl.mem
-ED_model/*.bin
-ED_model/*.log
+ED_model/
