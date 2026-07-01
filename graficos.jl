@@ -179,7 +179,39 @@ for contingencia in tipo_contingencia
     savefig(p6, joinpath(graficos_path, "6_perfiles_tension_critivos_modo_$(contingencia).png"))
 end
 
+# Gráfico de Análisis de Compensación para barra slack
+df_compensacion = CSV.read(joinpath(tablas_path, "6_analisis_compensacion.csv"), DataFrame)
 
+p7 = plot(title="Compensacion de Perdidas en Generadores",
+          xlabel="Hora del dia",
+          ylabel="Desviacion P_real vs P_despacho (MW)",
+          legend=:topleft)
+
+# Extraemos las columnas de los generadores (saltando la columna "Hora")
+cols_dev = names(df_compensacion)[2:end]
+colores_dev = [:firebrick, :dodgerblue, :darkorange, :forestgreen, :purple]
+
+for (i, col) in enumerate(cols_dev)
+    nombre_gen = replace(col, "Dev_MW_" => "")
+    
+    if nombre_gen == "gen-1"
+        plot!(p7, horas, df_compensacion[!, col], 
+              label="$(nombre_gen) (Slack)", 
+              linewidth=3, 
+              color=colores_dev[i], 
+              marker=:circle)
+    else
+        plot!(p7, horas, df_compensacion[!, col], 
+              label=nombre_gen, 
+              linewidth=2, 
+              linestyle=:dash,
+              color=colores_dev[i])
+    end
+end
+
+ylims!(p7, (-4.7, maximum(df_compensacion[!, "Dev_MW_gen-1"]) * 1.2))
+
+savefig(p7, joinpath(graficos_path, "7_analisis_compensacion.png"))
 
 
 println("Graficos generados exitosamente en la carpeta '$graficos_path'.")
