@@ -179,6 +179,41 @@ for contingencia in tipo_contingencia
     savefig(p6, joinpath(graficos_path, "6_perfiles_tension_critivos_modo_$(contingencia).png"))
 end
 
+# 6. Gráfico de Potencia generada por hora y generador según contingencia
+
+for contingencia in tipo_contingencia
+    df_voltaje = CSV.read(joinpath(tablas_path, "7_generación_generacion_modo_$(contingencia).csv"), DataFrame)
+
+    if contingencia == "line"
+        tipo_titulo = "Caida de línea 2-3"
+    elseif contingencia == "gen"
+        tipo_titulo = "Caída de generador 2"
+    else 
+        tipo_titulo = "Funcionamiento normal"
+    end
+
+    p6 = plot(title="Perfil de Tension de Barras - $(tipo_titulo)",
+            xlabel="Hora del dia",
+            ylabel="Magnitud de Tension (pu)",
+            legend=:outerbottom,
+            legend_column = 5,
+            legendfontsize = 7,
+            size = (720, 480))
+    # Límites de norma técnica
+    hline!(p6, [0.95, 1.05], color=:red, linestyle=:dash, label="Límites Norma", linewidth=2)
+
+    for (i, b) in enumerate(names(df_voltaje)[2:end])
+        #sólo aquellos que estén fuera de norma
+        voltajes = df_voltaje[!, b]
+        if any(voltajes .< 0.95) || any(voltajes .> 1.05)
+            plot!(p6, horas, voltajes, label=replace(b, "_" => " "), linewidth=2)
+        end
+    end
+    # límite de plot para efecto de zoom
+    xlims!(p6, (18, 23))
+    savefig(p6, joinpath(graficos_path, "6_perfiles_tension_critivos_modo_$(contingencia).png"))
+end
+
 
 
 
