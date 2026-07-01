@@ -1,4 +1,4 @@
-using PowerSystems, PowerFlows,
+using PowerSystems, PowerFlows
 
 file_path_static = joinpath(@__DIR__, "Base_14bus.m")
 sys = System(file_path_static)
