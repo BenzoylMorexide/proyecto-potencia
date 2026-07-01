@@ -16,7 +16,7 @@ S_base = get_base_power(sys)
 
 
 # Seleccion modo operación
-tipo_contingencia = "normal" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
+tipo_contingencia = "line" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
 
 #Ponderación 10% 
 λ_load = 1.10
@@ -208,6 +208,17 @@ for g in gens_termicos_flujo
     analisis_compensacion[!, "Dev_MW_" * get_name(g)] = zeros(Float64, 24)
 end
 
+# Tabla de despacho por modo
+despacho_modo = DataFrame(Hora = 0:23)
+
+# Columnas de generación
+for nombre in ["gen-1", "gen-2", "gen-4", "gen-5", "gen-solar"]
+    despacho_modo[!, nombre] = zeros(Float64, 24)
+end
+
+despacho_modo[!, "Total_Generacion_MW"] = zeros(Float64, 24)
+despacho_modo[!, "Modo"] = fill(tipo_contingencia, 24)
+
 # en el loop de aca abajo se corre para cada hora un flujo. Para eso, primero
 # se actualizan los valores de las demandas para esa hora según el .csv entregado
 for i in 1:24
@@ -250,6 +261,45 @@ for i in 1:24
     if isa(res_temp, Dict)
         df_temp = res_temp["bus_results"]
 
+        # Esta tabla guarda la generación obtenida desde el flujo AC.
+        # Sirve para comparar el despacho normal, caída de línea y caída de generador.
+        gen1_mw = 0.0
+        gen2_mw = 0.0
+        gen4_mw = 0.0
+        gen5_mw = 0.0
+        genfv_mw = 0.0
+
+        for row in eachrow(df_temp)
+            bus_num = row.bus_number
+
+            if bus_num == 1
+                gen1_mw = row.P_gen
+            elseif bus_num == 2
+                gen2_mw = row.P_gen
+            elseif bus_num == 3
+                genfv_mw = row.P_gen
+            elseif bus_num == 6
+                gen4_mw = row.P_gen
+            elseif bus_num == 8
+                gen5_mw = row.P_gen
+            end
+        end
+
+        # Si el modo es caída del generador 2 y ya ocurrió la contingencia,
+        # se deja explícitamente gen-2 en cero en la tabla.
+        if tipo_contingencia == "gen" && i >= 22
+            gen2_mw = 0.0
+        end
+
+        despacho_modo[i, "gen-1"] = gen1_mw
+        despacho_modo[i, "gen-2"] = gen2_mw
+        despacho_modo[i, "gen-4"] = gen4_mw
+        despacho_modo[i, "gen-5"] = gen5_mw
+        despacho_modo[i, "gen-solar"] = genfv_mw
+
+        despacho_modo[i, "Total_Generacion_MW"] =
+            gen1_mw + gen2_mw + gen4_mw + gen5_mw + genfv_mw
+
         for g in gens_termicos_flujo
             nombre = get_name(g)
             num_bus = get_number(get_bus(g))
@@ -277,10 +327,16 @@ for i in 1:24
         println("OJITO PIOJO: El flujo de potencia no convergió en la Hora $(i-1)") # XDDDDDDDDD
     end
 end
+
 println("\nFlujos de potencia Exitosos")
 display(resultados_voltaje)
 
 CSV.write(joinpath(tablas_path, "5_perfiles_voltaje_modo_$(tipo_contingencia).csv"), resultados_voltaje)
+
+CSV.write(
+    joinpath(tablas_path, "7_despacho_generacion_modo_$(tipo_contingencia).csv"),
+    despacho_modo
+)
 
 # Verificación norma técnica: 0.95 <= |V| <= 1.05 pu
 println("\nVerificación norma técnica de voltajes [0.95, 1.05] pu:")
