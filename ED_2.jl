@@ -18,6 +18,12 @@ S_base = get_base_power(sys)
 # Seleccion modo operación
 tipo_contingencia = "line" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
 
+# seleccionar elementos extras a ocupar
+include_in_grid = ["BESS"] # "BESS", 
+# parámetros de cada elemento en su respectiva descripción
+
+extra_descriptor = join(include_in_grid, "_")
+
 #Ponderación 10% 
 λ_load = 1.10
 cargas = collect(get_components(PowerLoad, sys));
@@ -51,6 +57,68 @@ gen_solar = RenewableDispatch(
     operation_cost=TwoPartCost(VariableCost(0.0), 0.0), # Costo variable 0
     base_power=S_base)
 add_component!(sys, gen_solar)
+
+for element in include_in_grid
+    if element == "BESS"
+        bess = GenericBattery(
+            name = "BESS",
+            available = true,
+            bus = bus_solar, # BESS puesto en bus solar por defecto
+
+            prime_mover_type = PrimeMovers.BA, # Batería estándard
+
+            # Energía en MWh
+            initial_energy = 40.0,
+            state_of_charge_limits = (
+                min = 0.0,
+                max = 80.0,
+            ),
+
+            # Potencia (MW)
+            rating = 20.0, # equivalente a potencia máxima
+            active_power = 0.0, # potencia actual
+
+            input_active_power_limits = (
+                min = 0.0,
+                max = 20.0,
+            ),
+
+            output_active_power_limits = (
+                min = 0.0,
+                max = 20.0,
+            ),
+
+            efficiency = (
+                in = 0.95,
+                out = 0.95,
+            ),
+
+            reactive_power = 0.0,
+            reactive_power_limits = (
+                min = -10.0,
+                max = 10.0,
+            ),
+
+            base_power = S_base,
+            
+            # optimización para costo de almacenamiento
+            operation_cost = StorageManagementCost(
+                variable = VariableCost(0.0), # Precio por MWh
+                fixed = 0.0,    # costo fijo
+                start_up = 0.0, # costo de encendido
+                shut_down = 0.0,    #costo de apagado
+                energy_shortage_cost = 10.0, # Multa por terminar la simulación con menos energía que la inicial
+                energy_surplus_cost = 10.0, # Multa por terminar la simulación con más energía que la inicial
+                # las multas anteriores es para que no se aproveche de la energía inicial de las baterías para compensar el limitado horizonte de simulación
+                # se trabajará con un valor que logre un estado relativamente constante en operación normal, pero que no restringa bajo operación con contingencia
+            ),
+        )
+        add_component!(sys, bess)
+    end
+end
+
+
+
 
 #Funciones de costo: solo asignamos a los generadores térmicos
 gens_termicos = sort!(collect(get_components(ThermalStandard, sys)), by=x -> get_name(x))
@@ -117,6 +185,12 @@ println("\nResultados para variables de decisión (MW):")
 despacho_termico = vars["ActivePowerVariable__ThermalStandard"]
 despacho_solar = vars["ActivePowerVariable__RenewableDispatch"]
 despacho_p = innerjoin(despacho_termico, despacho_solar, on=:DateTime)
+
+# Cosas agregadas
+if "BESS" in include_in_grid
+    despacho_BESS = vars["ActivePowerVariable__GenericBattery"]
+end
+
 despacho_p_print = select(despacho_p, ["DateTime"; sort(names(despacho_p)[2:end])])
 display(despacho_p_print)
 println("\nResultados para función objetivo - costos minimizados:")
@@ -134,7 +208,7 @@ display(lambda_mw)
 # la resolución de los flujos de potencia. 
 
 ### GUARDAR INFO PARA ANALISIS ###
-tablas_path = "Tablas_Resultados_ED"
+tablas_path = "Tablas_Resultados_ED_2"
 mkpath(tablas_path)
 
 # Limpieza de valores pequeños negativos antes de exportar
@@ -146,7 +220,7 @@ despacho_p_print.Demanda_Total_MW = sum.(eachrow(despacho_p_print[!, 2:end]))
 
 # Los puntos de despacho de potencia activa (MW) de todas las unidades generadoras en cada hora, otorgados por los EDs.
 # Aprovecho de agregar una nueva columna con la suma de generacion por cada fila.
-CSV.write(joinpath(tablas_path, "1_despachos_generacion.csv"), despacho_p_print)
+CSV.write(joinpath(tablas_path, "1_despachos_generacion_$(extra_descriptor).csv"), despacho_p_print)
 
 # El costo total minimizado al final del d´ıa de ma˜nana, otorgado por los EDs.
 # Resultados para función objetivo - costos minimizados:
@@ -162,7 +236,7 @@ df_demanda = DataFrame(
     DateTime = timestamps,
     Demanda_Total_MW = demanda_real_mw
 )
-CSV.write(joinpath(tablas_path, "2_demanda_total_real.csv"), df_demanda)
+CSV.write(joinpath(tablas_path, "2_demanda_total_real_$(extra_descriptor).csv"), df_demanda)
 
 # generación total despachada vs demanda real por hora
 df_comparacion = DataFrame(
@@ -175,10 +249,10 @@ println("\nComparación Generación vs Demanda (MW) por hora:")
 display(df_comparacion)
 idx_max_dem = argmax(demanda_real_mw)
 println("Hora de mayor demanda: $(timestamps[idx_max_dem]) → $(round(demanda_real_mw[idx_max_dem], digits=2)) MW")
-CSV.write(joinpath(tablas_path, "3_comparacion_gen_dem.csv"), df_comparacion)
+CSV.write(joinpath(tablas_path, "3_comparacion_gen_dem_$(extra_descriptor).csv"), df_comparacion)
 
 # La evoluci´on del costo marginal λ de la energ´ıa (en USD/MWh) del sistema en cada hora del d´ıa, otorgado por los EDs.
-CSV.write(joinpath(tablas_path, "4_costo_marginal.csv"), lambda_mw)
+CSV.write(joinpath(tablas_path, "4_costo_marginal_$(extra_descriptor).csv"), lambda_mw)
 
 
 
@@ -326,10 +400,10 @@ end
 println("\nFlujos de potencia Exitosos")
 display(resultados_voltaje)
 
-CSV.write(joinpath(tablas_path, "5_perfiles_voltaje_modo_$(tipo_contingencia).csv"), resultados_voltaje)
+CSV.write(joinpath(tablas_path, "5_perfiles_voltaje_modo_$(extra_descriptor)_$(tipo_contingencia).csv"), resultados_voltaje)
 
 CSV.write(
-    joinpath(tablas_path, "7_despacho_generacion_modo_$(tipo_contingencia).csv"),
+    joinpath(tablas_path, "7_despacho_generacion_modo_$(extra_descriptor)_$(tipo_contingencia).csv"),
     despacho_modo
 )
 
@@ -343,10 +417,10 @@ else
     println("⚠ VIOLACIONES DE VOLTAJE ENCONTRADAS:")
     display(violaciones)
 end
-CSV.write(joinpath(tablas_path, "5b_violaciones_voltaje_modo_$(tipo_contingencia).csv"), violaciones)
+CSV.write(joinpath(tablas_path, "5b_violaciones_voltaje_modo_$(extra_descriptor)_$(tipo_contingencia).csv"), violaciones)
 
 display(analisis_compensacion)
 
-CSV.write(joinpath(tablas_path, "6_analisis_compensacion.csv"), analisis_compensacion)
+CSV.write(joinpath(tablas_path, "6_analisis_compensacion_$(extra_descriptor).csv"), analisis_compensacion)
 
 ### PARA LAS CONTINGENCIAS HACER OTRO DEEPCOPY PARA NO ALTERAR SISTEMA ORIGINAL
