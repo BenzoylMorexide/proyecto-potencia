@@ -18,10 +18,10 @@ S_base = get_base_power(sys)
 
 
 # Seleccion modo operación
-tipo_contingencia = "normal" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
+tipo_contingencia = "line" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
 
 # seleccionar elementos extras a ocupar
-include_in_grid = ["BESS"] # "BESS", 
+include_in_grid = ["BESS", "statcom"] # "BESS", "statcom"
 # parámetros de cada elemento en su respectiva descripción
 
 # Margen para el slack en flujo AC
@@ -77,6 +77,7 @@ add_component!(sys, gen_solar)
 
 for element in include_in_grid
     if element == "BESS"
+        max_capacity_BESS = 180 # MWh
         bess = GenericBattery(
             name = "BESS",
             available = true,
@@ -86,9 +87,10 @@ for element in include_in_grid
 
             # Energía en MWh
             initial_energy = 90.0/S_base,
+            
             state_of_charge_limits = (
-                min = 0.0/S_base,
-                max = 180.0/S_base,
+                min = max_capacity_BESS*0.05/S_base,
+                max = max_capacity_BESS*0.95/S_base,
             ),
 
             # Potencia (MW)
@@ -106,15 +108,15 @@ for element in include_in_grid
             ),
 
             efficiency = (
-                in = 0.95,
-                out = 0.95,
+                in = 0.96,
+                out = 0.96,
             ),
 
             reactive_power = 0.0/S_base,
             reactive_power_limits = (
-                min = -10.0/S_base,
-                max = 10.0/S_base,
-            ),
+                min = -20.0/S_base,
+                max = 20.0/S_base,
+            ),# dentro de un margen de f.p. de 0.95
 
             base_power = S_base,
             
@@ -305,6 +307,45 @@ println("FLujo potencia iniciado")
 
 
 sys_flujo = deepcopy(sys)
+
+# if "statcom" in include_in_grid
+#     ### --- STATCOM sintético en barra 3 (aplicado solo en sys_flujo) --- ###
+
+#     Q_statcom_mvar     = 15.0   # potencia reactiva nominal (ajustable, ±)
+#     v_setpoint_statcom = 1.0    # pu, tensión objetivo que el STATCOM intenta sostener
+
+#     # Convertir la barra a PV: ahora SÍ existe un dispositivo capaz de regular tensión ahí.
+#     # gen-solar sigue sin aportar Q (sus límites siguen en (0,0)), así que toda la
+#     # regulación de tensión recae en el STATCOM.
+#     set_bustype!(bus_solar, PowerSystems.ACBusTypes.PV)
+#     set_magnitude!(bus_solar, v_setpoint_statcom)
+
+#     statcom = ThermalStandard(
+#         name      = "STATCOM_Barra3",
+#         available = true,
+#         status    = true,
+#         bus       = bus_solar,
+
+#         active_power   = 0.0,
+#         reactive_power = 0.0,
+
+#         active_power_limits = (min = 0.0, max = 0.0),  # sin capacidad activa: es puramente reactivo
+#         reactive_power_limits = (
+#             min = -Q_statcom_mvar / S_base,
+#             max =  Q_statcom_mvar / S_base,
+#         ),
+
+#         operation_cost   = ThreePartCost(VariableCost(0.0), 0.0, 0.0, 0.0),
+#         base_power       = S_base,
+#         prime_mover_type = PrimeMovers.OT,      # "Other" — no es una tecnología térmica real
+#         fuel             = ThermalFuels.OTHER,
+#     )
+#     add_component!(sys_flujo, statcom)
+#     q_statcom_mvar = zeros(Float64, 24)
+# end
+
+
+
 ac_pf_solver = ACPowerFlow(check_reactive_power_limits = true)
 
 resultados_voltaje = DataFrame(Hora = 1:24)
@@ -390,6 +431,12 @@ for i in 1:24
     res_temp = PowerFlows.solve_powerflow(ac_pf_solver, sys_flujo)
     if isa(res_temp, Dict)
         df_temp = res_temp["bus_results"]
+
+        # if "statcom" in include_in_grid
+        #     df_temp = res_temp["bus_results"]
+        #     q_bus3 = df_temp[df_temp.bus_number .== 3, :Q_gen][1]   # todo el Q en barra 3 es del STATCOM
+        #     q_statcom_mvar[i] = q_bus3 * S_base
+        # end
 
         # Esta tabla guarda la generación obtenida desde el flujo AC.
         # Sirve para comparar el despacho normal, caída de línea y caída de generador.
@@ -482,5 +529,17 @@ CSV.write(joinpath(tablas_path, "5b_violaciones_voltaje_modo_$(extra_descriptor)
 display(analisis_compensacion)
 
 CSV.write(joinpath(tablas_path, "6_analisis_compensacion_$(extra_descriptor).csv"), analisis_compensacion)
+
+
+
+# # tabla statcom
+# df_statcom = DataFrame(
+#     Hora            = 0:23,
+#     V_Barra3        = resultados_voltaje.Barra_3,
+#     Q_STATCOM_MVAr  = q_statcom_mvar,
+#     Saturado        = abs.(q_statcom_mvar) .>= (Q_statcom_mvar * 0.999)
+# )
+
+# CSV.write(joinpath(tablas_path, "9_STATCOM_$(extra_descriptor)_$(tipo_contingencia).csv"), df_statcom)
 
 ### PARA LAS CONTINGENCIAS HACER OTRO DEEPCOPY PARA NO ALTERAR SISTEMA ORIGINAL
