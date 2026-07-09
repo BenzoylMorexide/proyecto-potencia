@@ -18,7 +18,7 @@ S_base = get_base_power(sys)
 
 
 # Seleccion modo operación
-tipo_contingencia = "line" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
+tipo_contingencia = "gen" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
 
 # seleccionar elementos extras a ocupar
 include_in_grid = ["BESS", "statcom"] # "BESS", "statcom"
@@ -308,42 +308,44 @@ println("FLujo potencia iniciado")
 
 sys_flujo = deepcopy(sys)
 
-# if "statcom" in include_in_grid
-#     ### --- STATCOM sintético en barra 3 (aplicado solo en sys_flujo) --- ###
+if "statcom" in include_in_grid
+    ### --- STATCOM sintético en barra 3 (aplicado solo en sys_flujo) --- ###
 
-#     Q_statcom_mvar     = 15.0   # potencia reactiva nominal (ajustable, ±)
-#     v_setpoint_statcom = 1.0    # pu, tensión objetivo que el STATCOM intenta sostener
+    # IMPORTANTE: obtener el objeto Bus real dentro de sys_flujo (deepcopy),
+    # no el bus_solar original que pertenece a `sys`.
+    bus_solar_flujo = get_component(Bus, sys_flujo, get_name(bus_solar))
 
-#     # Convertir la barra a PV: ahora SÍ existe un dispositivo capaz de regular tensión ahí.
-#     # gen-solar sigue sin aportar Q (sus límites siguen en (0,0)), así que toda la
-#     # regulación de tensión recae en el STATCOM.
-#     set_bustype!(bus_solar, PowerSystems.ACBusTypes.PV)
-#     set_magnitude!(bus_solar, v_setpoint_statcom)
+    Q_statcom_mvar     = 30.0
+    v_setpoint_statcom = 1.0
 
-#     statcom = ThermalStandard(
-#         name      = "STATCOM_Barra3",
-#         available = true,
-#         status    = true,
-#         bus       = bus_solar,
+    set_bustype!(bus_solar_flujo, PowerSystems.ACBusTypes.PV)
+    set_magnitude!(bus_solar_flujo, v_setpoint_statcom)
 
-#         active_power   = 0.0,
-#         reactive_power = 0.0,
+    statcom = ThermalStandard(
+        name      = "STATCOM_Barra3",
+        available = true,
+        status    = true,
+        bus       = bus_solar_flujo,   # <-- usar el bus correcto
 
-#         active_power_limits = (min = 0.0, max = 0.0),  # sin capacidad activa: es puramente reactivo
-#         reactive_power_limits = (
-#             min = -Q_statcom_mvar / S_base,
-#             max =  Q_statcom_mvar / S_base,
-#         ),
+        active_power   = 0.0,
+        reactive_power = 0.0,
+        rating = Q_statcom_mvar / S_base,
+        ramp_limits = nothing,
 
-#         operation_cost   = ThreePartCost(VariableCost(0.0), 0.0, 0.0, 0.0),
-#         base_power       = S_base,
-#         prime_mover_type = PrimeMovers.OT,      # "Other" — no es una tecnología térmica real
-#         fuel             = ThermalFuels.OTHER,
-#     )
-#     add_component!(sys_flujo, statcom)
-#     q_statcom_mvar = zeros(Float64, 24)
-# end
+        active_power_limits = (min = 0.0, max = 0.0),
+        reactive_power_limits = (
+            min = -Q_statcom_mvar / S_base,
+            max =  Q_statcom_mvar / S_base,
+        ),
 
+        operation_cost   = ThreePartCost(VariableCost(0.0), 0.0, 0.0, 0.0),
+        base_power       = S_base,
+        prime_mover_type = PrimeMovers.OT,
+        fuel             = ThermalFuels.OTHER,
+    )
+    add_component!(sys_flujo, statcom)
+    q_statcom_mvar = zeros(Float64, 24)
+end
 
 
 ac_pf_solver = ACPowerFlow(check_reactive_power_limits = true)
@@ -356,7 +358,13 @@ end
 
 base_P_load = Dict(get_name(l) => get_active_power(l) for l in get_components(PowerLoad, sys_flujo))
 base_Q_load = Dict(get_name(l) => get_reactive_power(l) for l in get_components(PowerLoad, sys_flujo))
-gens_termicos_flujo = sort!(collect(get_components(ThermalStandard, sys_flujo)), by=x -> get_name(x))
+# gens_termicos_flujo = sort!(collect(get_components(ThermalStandard, sys_flujo)), by=x -> get_name(x))
+
+gens_termicos_flujo = sort!(
+    collect(get_components(g -> get_name(g) != "STATCOM_Barra3", ThermalStandard, sys_flujo)),
+    by = x -> get_name(x)
+)
+
 gen_solar_flujo = get_component(RenewableDispatch, sys_flujo, "gen-solar")
 
 # inside the hourly loop, right after you set gen_solar_flujo's active power
@@ -398,7 +406,10 @@ for i in 1:24
         elseif tipo_contingencia == "gen"
             gen_barra2 = get_component(ThermalStandard, sys, "gen-2")
             remove_component!(sys_flujo, gen_barra2)
-            global gens_termicos_flujo = sort!(collect(get_components(ThermalStandard, sys_flujo)), by=x -> get_name(x))
+            global gens_termicos_flujo = sort!(
+                collect(get_components(g -> get_name(g) != "STATCOM_Barra3", ThermalStandard, sys_flujo)),
+                by = x -> get_name(x)
+            )
             println("Contingencia aplicada: caida generador barra 2\n\n")
         elseif tipo_contingencia == "normal"
             println("Modo de operación normal\n\n")
@@ -432,11 +443,11 @@ for i in 1:24
     if isa(res_temp, Dict)
         df_temp = res_temp["bus_results"]
 
-        # if "statcom" in include_in_grid
-        #     df_temp = res_temp["bus_results"]
-        #     q_bus3 = df_temp[df_temp.bus_number .== 3, :Q_gen][1]   # todo el Q en barra 3 es del STATCOM
-        #     q_statcom_mvar[i] = q_bus3 * S_base
-        # end
+        if "statcom" in include_in_grid
+            df_temp = res_temp["bus_results"]
+            q_bus3 = df_temp[df_temp.bus_number .== 3, :Q_gen][1]   # todo el Q en barra 3 es del STATCOM
+            q_statcom_mvar[i] = q_bus3 * S_base
+        end
 
         # Esta tabla guarda la generación obtenida desde el flujo AC.
         # Sirve para comparar el despacho normal, caída de línea y caída de generador.
@@ -531,15 +542,16 @@ display(analisis_compensacion)
 CSV.write(joinpath(tablas_path, "6_analisis_compensacion_$(extra_descriptor).csv"), analisis_compensacion)
 
 
+if "statcom" in include_in_grid
+    # tabla statcom
+    df_statcom = DataFrame(
+        Hora            = 0:23,
+        V_Barra3        = resultados_voltaje.Barra_3,
+        Q_STATCOM_MVAr  = q_statcom_mvar,
+        Saturado        = abs.(q_statcom_mvar) .>= (Q_statcom_mvar * 0.999)
+    )
 
-# # tabla statcom
-# df_statcom = DataFrame(
-#     Hora            = 0:23,
-#     V_Barra3        = resultados_voltaje.Barra_3,
-#     Q_STATCOM_MVAr  = q_statcom_mvar,
-#     Saturado        = abs.(q_statcom_mvar) .>= (Q_statcom_mvar * 0.999)
-# )
-
-# CSV.write(joinpath(tablas_path, "9_STATCOM_$(extra_descriptor)_$(tipo_contingencia).csv"), df_statcom)
+    CSV.write(joinpath(tablas_path, "9_STATCOM_$(extra_descriptor)_$(tipo_contingencia).csv"), df_statcom)
+end
 
 ### PARA LAS CONTINGENCIAS HACER OTRO DEEPCOPY PARA NO ALTERAR SISTEMA ORIGINAL

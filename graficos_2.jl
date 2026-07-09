@@ -3,7 +3,7 @@ using Dates
 
 #solución parte 2
 # seleccionar elementos extras a ocupar
-include_in_grid = ["BESS"] # "BESS", 
+include_in_grid = ["BESS", "statcom"] # "BESS", "statcom"
 # parámetros de cada elemento en su respectiva descripción
 
 extra_descriptor = join(include_in_grid, "_")
@@ -32,8 +32,8 @@ colores_gen = [:firebrick :darkorange :gold :saddlebrown :dodgerblue :turquoise 
 
 
 if "BESS" in include_in_grid
-    push!(gen_cols, "BESS")
-    labels = hcat(labels, "BESS")
+    push!(gen_cols, "Net_BESS")
+    labels = hcat(labels, "Net_BESS")
 end
 if "extra" in include_in_grid
     push!(gen_cols, "extra")
