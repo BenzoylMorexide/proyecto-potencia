@@ -1,7 +1,9 @@
 using PowerSystems, PowerSimulations, PowerFlows
 using Dates, TimeSeries
-using Ipopt
+# using Ipopt
+using HiGHS
 using CSV, DataFrames, Plots
+using StorageSystemsSimulations # v0.9.0
 
 # Carpeta para guardar el modelo
 ed_model_output = joinpath(@__DIR__, "ED_model")
@@ -19,7 +21,7 @@ S_base = get_base_power(sys)
 tipo_contingencia = "line" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
 
 # seleccionar elementos extras a ocupar
-include_in_grid = ["BESS"] # "BESS", 
+include_in_grid = [] # "BESS", 
 # parámetros de cada elemento en su respectiva descripción
 
 extra_descriptor = join(include_in_grid, "_")
@@ -68,24 +70,24 @@ for element in include_in_grid
             prime_mover_type = PrimeMovers.BA, # Batería estándard
 
             # Energía en MWh
-            initial_energy = 40.0,
+            initial_energy = 4000.0/S_base,
             state_of_charge_limits = (
-                min = 0.0,
-                max = 80.0,
+                min = 0.0/S_base,
+                max = 8000.0/S_base,
             ),
 
             # Potencia (MW)
-            rating = 20.0, # equivalente a potencia máxima
-            active_power = 0.0, # potencia actual
+            rating = 2000.0/S_base, # equivalente a potencia máxima
+            active_power = 0.0/S_base, # potencia actual
 
             input_active_power_limits = (
-                min = 0.0,
-                max = 20.0,
+                min = 0.0/S_base,
+                max = 2000.0/S_base,
             ),
 
             output_active_power_limits = (
-                min = 0.0,
-                max = 20.0,
+                min = 0.0/S_base,
+                max = 2000.0/S_base,
             ),
 
             efficiency = (
@@ -93,10 +95,10 @@ for element in include_in_grid
                 out = 0.95,
             ),
 
-            reactive_power = 0.0,
+            reactive_power = 0.0/S_base,
             reactive_power_limits = (
-                min = -10.0,
-                max = 10.0,
+                min = -10.0/S_base,
+                max = 10.0/S_base,
             ),
 
             base_power = S_base,
@@ -107,8 +109,8 @@ for element in include_in_grid
                 fixed = 0.0,    # costo fijo
                 start_up = 0.0, # costo de encendido
                 shut_down = 0.0,    #costo de apagado
-                energy_shortage_cost = 10.0, # Multa por terminar la simulación con menos energía que la inicial
-                energy_surplus_cost = 10.0, # Multa por terminar la simulación con más energía que la inicial
+                energy_shortage_cost = 1.0, # Multa por terminar la simulación con menos energía que la inicial
+                energy_surplus_cost = 1.0, # Multa por terminar la simulación con más energía que la inicial
                 # las multas anteriores es para que no se aproveche de la energía inicial de las baterías para compensar el limitado horizonte de simulación
                 # se trabajará con un valor que logre un estado relativamente constante en operación normal, pero que no restringa bajo operación con contingencia
             ),
@@ -166,8 +168,17 @@ transform_single_time_series!(sys, 24, Hour(1)) # (sys, horizonte temporal, reso
 template_ed = template_economic_dispatch()
 set_network_model!(template_ed, NetworkModel(CopperPlatePowerModel, duals=[CopperPlateBalanceConstraint], use_slacks=true))
 
+
+if "BESS" in include_in_grid
+    set_device_model!(template_ed, DeviceModel(GenericBattery, StorageDispatchWithReserves))
+end
+
+
+
+
+
 # Optimizador y DecisionModel
-optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 3) # "print_level" es solo la verbosidad
+optimizer = optimizer_with_attributes(HiGHS.Optimizer) # "print_level" es solo la verbosidad
 # en el output del solver
 modelo_ed = DecisionModel(template_ed, sys, optimizer=optimizer, horizon=24)
 
@@ -188,7 +199,14 @@ despacho_p = innerjoin(despacho_termico, despacho_solar, on=:DateTime)
 
 # Cosas agregadas
 if "BESS" in include_in_grid
-    despacho_BESS = vars["ActivePowerVariable__GenericBattery"]
+    p_in  = vars["ActivePowerInVariable__GenericBattery"]
+    p_out = vars["ActivePowerOutVariable__GenericBattery"]
+
+    despacho_BESS = DataFrame(
+        DateTime = p_in.DateTime,
+        Net_BESS = p_out[!, "BESS"] .- p_in[!, "BESS"]
+    )
+    despacho_p = innerjoin(despacho_p, despacho_BESS, on=:DateTime)
 end
 
 despacho_p_print = select(despacho_p, ["DateTime"; sort(names(despacho_p)[2:end])])
