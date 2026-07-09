@@ -1,7 +1,7 @@
 using PowerSystems, PowerSimulations, PowerFlows
 using Dates, TimeSeries
 # using Ipopt
-using HiGHS
+using Ipopt, HiGHS, Juniper
 using CSV, DataFrames, Plots
 using StorageSystemsSimulations # v0.9.0
 
@@ -21,7 +21,7 @@ S_base = get_base_power(sys)
 tipo_contingencia = "line" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
 
 # seleccionar elementos extras a ocupar
-include_in_grid = [] # "BESS", 
+include_in_grid = ["BESS"] # "BESS", 
 # parámetros de cada elemento en su respectiva descripción
 
 extra_descriptor = join(include_in_grid, "_")
@@ -70,24 +70,24 @@ for element in include_in_grid
             prime_mover_type = PrimeMovers.BA, # Batería estándard
 
             # Energía en MWh
-            initial_energy = 4000.0/S_base,
+            initial_energy = 90.0/S_base,
             state_of_charge_limits = (
                 min = 0.0/S_base,
-                max = 8000.0/S_base,
+                max = 180.0/S_base,
             ),
 
             # Potencia (MW)
-            rating = 2000.0/S_base, # equivalente a potencia máxima
+            rating = 60.0/S_base, # equivalente a potencia máxima
             active_power = 0.0/S_base, # potencia actual
 
             input_active_power_limits = (
                 min = 0.0/S_base,
-                max = 2000.0/S_base,
+                max = 60.0/S_base,
             ),
 
             output_active_power_limits = (
                 min = 0.0/S_base,
-                max = 2000.0/S_base,
+                max = 60.0/S_base,
             ),
 
             efficiency = (
@@ -109,8 +109,8 @@ for element in include_in_grid
                 fixed = 0.0,    # costo fijo
                 start_up = 0.0, # costo de encendido
                 shut_down = 0.0,    #costo de apagado
-                energy_shortage_cost = 1.0, # Multa por terminar la simulación con menos energía que la inicial
-                energy_surplus_cost = 1.0, # Multa por terminar la simulación con más energía que la inicial
+                energy_shortage_cost = 100.0, # Multa por terminar la simulación con menos energía que la inicial
+                energy_surplus_cost = 100.0, # Multa por terminar la simulación con más energía que la inicial
                 # las multas anteriores es para que no se aproveche de la energía inicial de las baterías para compensar el limitado horizonte de simulación
                 # se trabajará con un valor que logre un estado relativamente constante en operación normal, pero que no restringa bajo operación con contingencia
             ),
@@ -176,9 +176,12 @@ end
 
 
 
-
 # Optimizador y DecisionModel
-optimizer = optimizer_with_attributes(HiGHS.Optimizer) # "print_level" es solo la verbosidad
+optimizer = optimizer_with_attributes(
+    Juniper.Optimizer,
+    "nl_solver" => optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0),
+    "mip_solver" => optimizer_with_attributes(HiGHS.Optimizer, "output_flag" => false),
+)
 # en el output del solver
 modelo_ed = DecisionModel(template_ed, sys, optimizer=optimizer, horizon=24)
 
@@ -231,7 +234,13 @@ mkpath(tablas_path)
 
 # Limpieza de valores pequeños negativos antes de exportar
 for col in names(despacho_p_print)[2:end]
-    despacho_p_print[!, col] = [x < 1e-5 ? 0.0 : x for x in despacho_p_print[!, col]]
+    if col == "Net_BESS"
+        # signed quantity: only clean genuine near-zero noise, keep sign
+        despacho_p_print[!, col] = [abs(x) < 1e-5 ? 0.0 : x for x in despacho_p_print[!, col]]
+    else
+        # generation columns: always non-negative, clamp tiny negative noise to 0
+        despacho_p_print[!, col] = [x < 1e-5 ? 0.0 : x for x in despacho_p_print[!, col]]
+    end
 end
 
 despacho_p_print.Demanda_Total_MW = sum.(eachrow(despacho_p_print[!, 2:end]))
@@ -294,6 +303,11 @@ base_Q_load = Dict(get_name(l) => get_reactive_power(l) for l in get_components(
 gens_termicos_flujo = sort!(collect(get_components(ThermalStandard, sys_flujo)), by=x -> get_name(x))
 gen_solar_flujo = get_component(RenewableDispatch, sys_flujo, "gen-solar")
 
+# inside the hourly loop, right after you set gen_solar_flujo's active power
+if "BESS" in include_in_grid
+    bess_flujo = get_component(GenericBattery, sys_flujo, "BESS")
+end
+
 # Crear tabla para comprobar la desviación de potencia activa de TODOS los generadores
 analisis_compensacion = DataFrame(Hora = 1:24)
 for g in gens_termicos_flujo
@@ -342,6 +356,11 @@ for i in 1:24
     # de la planta solar segun el .csv entregado de irradiancia.
     factor_solar = df_perfiles.Irradiancia_normalizada[i]
     set_active_power!(gen_solar_flujo, cap_max_gen_solar * factor_solar)
+    # inside the hourly loop, right after you set gen_solar_flujo's active power
+    if "BESS" in include_in_grid
+        net_bess_mw = despacho_p_print[i, "Net_BESS"]
+        set_active_power!(bess_flujo, net_bess_mw / S_base)
+    end
 
     for g in gens_termicos_flujo
         nombre_gen = get_name(g)
