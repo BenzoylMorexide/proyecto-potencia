@@ -21,7 +21,7 @@ S_base = get_base_power(sys)
 tipo_contingencia = "line" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
 
 # seleccionar elementos extras a ocupar
-include_in_grid = [] # "BESS", 
+include_in_grid = ["BESS"] # "BESS", 
 # parámetros de cada elemento en su respectiva descripción
 
 extra_descriptor = join(include_in_grid, "_")
@@ -70,24 +70,24 @@ for element in include_in_grid
             prime_mover_type = PrimeMovers.BA, # Batería estándard
 
             # Energía en MWh
-            initial_energy = 4000.0/S_base,
+            initial_energy = 40.0/S_base,
             state_of_charge_limits = (
                 min = 0.0/S_base,
-                max = 8000.0/S_base,
+                max = 80.0/S_base,
             ),
 
             # Potencia (MW)
-            rating = 2000.0/S_base, # equivalente a potencia máxima
+            rating = 20.0/S_base, # equivalente a potencia máxima
             active_power = 0.0/S_base, # potencia actual
 
             input_active_power_limits = (
                 min = 0.0/S_base,
-                max = 2000.0/S_base,
+                max = 20.0/S_base,
             ),
 
             output_active_power_limits = (
                 min = 0.0/S_base,
-                max = 2000.0/S_base,
+                max = 20.0/S_base,
             ),
 
             efficiency = (
@@ -171,6 +171,25 @@ set_network_model!(template_ed, NetworkModel(CopperPlatePowerModel, duals=[Coppe
 
 if "BESS" in include_in_grid
     set_device_model!(template_ed, DeviceModel(GenericBattery, StorageDispatchWithReserves))
+end
+
+
+
+# Se elimina factor cuadrático en los costos al linealizarlo por segmentos
+function quadratic_to_piecewise_points(c, b, Pmin, Pmax, n_segments)
+    powers = range(Pmin, Pmax, length = n_segments + 1)
+    return [(P, c*P^2 + b*P) for P in powers]
+end
+
+for (i, g) in enumerate(gens_termicos)
+    c, b = costos_variables[i]
+    Pmin, Pmax = get_active_power_limits(g)
+
+    points = quadratic_to_piecewise_points(c, b, Pmin, Pmax, 6)
+    costo_piecewise = VariableCost(points)
+
+    costo_total = ThreePartCost(costo_piecewise, costos_fijos[i], 0.0, 0.0)
+    set_operation_cost!(g, costo_total)
 end
 
 
