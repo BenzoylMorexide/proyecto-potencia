@@ -318,7 +318,12 @@ end
 despacho_modo = DataFrame(Hora = 0:23)
 
 # Columnas de generación
-for nombre in ["gen-1", "gen-2", "gen-4", "gen-5", "gen-solar"]
+tipos_despachos = ["gen-1", "gen-2", "gen-4", "gen-5", "gen-solar"]
+if "BESS" in include_in_grid
+    push!(tipos_despachos, "BESS")
+end
+
+for nombre in tipos_despachos
     despacho_modo[!, nombre] = zeros(Float64, 24)
 end
 
@@ -356,7 +361,6 @@ for i in 1:24
     # de la planta solar segun el .csv entregado de irradiancia.
     factor_solar = df_perfiles.Irradiancia_normalizada[i]
     set_active_power!(gen_solar_flujo, cap_max_gen_solar * factor_solar)
-    # inside the hourly loop, right after you set gen_solar_flujo's active power
     if "BESS" in include_in_grid
         net_bess_mw = despacho_p_print[i, "Net_BESS"]
         set_active_power!(bess_flujo, net_bess_mw / S_base)
@@ -388,7 +392,7 @@ for i in 1:24
             elseif bus_num == 2
                 gen2_mw = row.P_gen
             elseif bus_num == 3
-                genfv_mw = row.P_gen
+                genfv_mw = row.P_gen - (("BESS" in include_in_grid) ? net_bess_mw : 0.0)
             elseif bus_num == 6
                 gen4_mw = row.P_gen
             elseif bus_num == 8
@@ -408,8 +412,12 @@ for i in 1:24
         despacho_modo[i, "gen-5"] = gen5_mw
         despacho_modo[i, "gen-solar"] = genfv_mw
 
+        if "BESS" in include_in_grid
+            despacho_modo[i, "BESS"] = net_bess_mw
+        end
+
         despacho_modo[i, "Total_Generacion_MW"] =
-            gen1_mw + gen2_mw + gen4_mw + gen5_mw + genfv_mw
+            gen1_mw + gen2_mw + gen4_mw + gen5_mw + genfv_mw + (("BESS" in include_in_grid) ? net_bess_mw : 0.0)
 
         for g in gens_termicos_flujo
             nombre = get_name(g)
