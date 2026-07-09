@@ -234,7 +234,13 @@ mkpath(tablas_path)
 
 # Limpieza de valores pequeños negativos antes de exportar
 for col in names(despacho_p_print)[2:end]
-    despacho_p_print[!, col] = [x < 1e-5 ? 0.0 : x for x in despacho_p_print[!, col]]
+    if col == "Net_BESS"
+        # signed quantity: only clean genuine near-zero noise, keep sign
+        despacho_p_print[!, col] = [abs(x) < 1e-5 ? 0.0 : x for x in despacho_p_print[!, col]]
+    else
+        # generation columns: always non-negative, clamp tiny negative noise to 0
+        despacho_p_print[!, col] = [x < 1e-5 ? 0.0 : x for x in despacho_p_print[!, col]]
+    end
 end
 
 despacho_p_print.Demanda_Total_MW = sum.(eachrow(despacho_p_print[!, 2:end]))
