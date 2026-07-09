@@ -18,11 +18,16 @@ S_base = get_base_power(sys)
 
 
 # Seleccion modo operación
-tipo_contingencia = "line" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
+tipo_contingencia = "normal" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
 
 # seleccionar elementos extras a ocupar
 include_in_grid = ["BESS"] # "BESS", 
 # parámetros de cada elemento en su respectiva descripción
+
+# Margen para el slack en flujo AC
+margen_gen1 = 0.9  # deja 10% de holgura
+
+
 
 extra_descriptor = join(include_in_grid, "_")
 
@@ -35,6 +40,16 @@ for load in cargas
     set_max_active_power!(load, get_max_active_power(load) * λ_load)
     set_max_reactive_power!(load, get_max_reactive_power(load) * λ_load)
 end
+
+# dar margen a gen_1 para que, al ser usado como slack, cuando difiera l apotencia del E igual quede dentro del margen
+gen1 = get_component(ThermalStandard, sys, "gen-1")
+limites_originales_gen1 = get_active_power_limits(gen1)
+
+nuevos_limites_gen1 = (
+    min = limites_originales_gen1.min,
+    max = limites_originales_gen1.max * margen_gen1
+)
+set_active_power_limits!(gen1, nuevos_limites_gen1)
 
 # Reemplazo gen3
 gen_termico_a_retirar = get_component(ThermalStandard, sys, "gen-3")
