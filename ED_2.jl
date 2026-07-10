@@ -21,7 +21,7 @@ tipos_contingencia = ["line", "gen", "normal"]
 # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
 
 # seleccionar elementos extras a ocupar
-include_in_grid = ["BESS", "statcom"] # "BESS", "statcom"
+include_in_grid = ["BESS"] # "BESS", "statcom"
 # parámetros de cada elemento en su respectiva descripción
 
 # Margen para el slack en flujo AC
@@ -301,7 +301,10 @@ function correr_flujo_potencia(sys, contingencia; bus_statcom_number=nothing)
 
     if "statcom" in include_in_grid
         extra_descriptor_AC = extra_descriptor*"_barra_$(bus_statcom_number)"
+    else
+        extra_descriptor_AC = extra_descriptor
     end
+
 
     nombre_statcom = nothing
     q_statcom_mvar = nothing
