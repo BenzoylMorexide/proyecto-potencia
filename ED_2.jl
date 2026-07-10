@@ -18,7 +18,7 @@ S_base = get_base_power(sys)
 
 
 # Seleccion modo operación
-tipo_contingencia = "gen" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
+tipo_contingencia = "normal" # line para caida de linea 2-3; gen para caída de gen síncrono en barra 2; normal para modo normal
 
 # seleccionar elementos extras a ocupar
 include_in_grid = ["BESS", "statcom"] # "BESS", "statcom"
@@ -27,9 +27,13 @@ include_in_grid = ["BESS", "statcom"] # "BESS", "statcom"
 # Margen para el slack en flujo AC
 margen_gen1 = 0.9  # deja 10% de holgura
 
+bus_statcom_number = 14
 
 
 extra_descriptor = join(include_in_grid, "_")
+if "statcom" in include_in_grid
+    extra_descriptor_AC = extra_descriptor*"_barra_$(bus_statcom_number)"
+end
 
 #Ponderación 10% 
 λ_load = 1.10
@@ -238,9 +242,7 @@ println("\nResultados para variables duales - precio de la energía (\$/MWh):")
 duals = read_duals(res)
 # La restricción de balance de potencia está formulada en pu, su dual está en $/pu.
 lambda_pu = duals["CopperPlateBalanceConstraint__System"]
-# Dividimos por S_base para obtener el costo marginal en $/MWh.
-lambda_mw = DataFrame(DateTime=lambda_pu.DateTime, Lambda_MW=lambda_pu[!, 2] ./ S_base)
-display(lambda_mw)
+
 
 # Las salidas de este código deberán ser consideradas como los setpoints de potencia activa a emplear en 
 # la resolución de los flujos de potencia. 
@@ -295,9 +297,6 @@ idx_max_dem = argmax(demanda_real_mw)
 println("Hora de mayor demanda: $(timestamps[idx_max_dem]) → $(round(demanda_real_mw[idx_max_dem], digits=2)) MW")
 CSV.write(joinpath(tablas_path, "3_comparacion_gen_dem_$(extra_descriptor).csv"), df_comparacion)
 
-# La evoluci´on del costo marginal λ de la energ´ıa (en USD/MWh) del sistema en cada hora del d´ıa, otorgado por los EDs.
-CSV.write(joinpath(tablas_path, "4_costo_marginal_$(extra_descriptor).csv"), lambda_mw)
-
 
 
 ### PARTE DE FLUJO DE POTENCIA PA HACER LA 5.
@@ -309,23 +308,24 @@ println("FLujo potencia iniciado")
 sys_flujo = deepcopy(sys)
 
 if "statcom" in include_in_grid
-    ### --- STATCOM sintético en barra 3 (aplicado solo en sys_flujo) --- ###
+    ### --- STATCOM sintético en la barra indicada (aplicado solo en sys_flujo) --- ###
 
-    # IMPORTANTE: obtener el objeto Bus real dentro de sys_flujo (deepcopy),
-    # no el bus_solar original que pertenece a `sys`.
-    bus_solar_flujo = get_component(Bus, sys_flujo, get_name(bus_solar))
+    # Obtenemos el bus directamente por su número, sin depender de bus_solar
+    bus_statcom_flujo = only(get_buses(sys_flujo, Set([bus_statcom_number])))
 
     Q_statcom_mvar     = 30.0
     v_setpoint_statcom = 1.0
 
-    set_bustype!(bus_solar_flujo, PowerSystems.ACBusTypes.PV)
-    set_magnitude!(bus_solar_flujo, v_setpoint_statcom)
+    set_bustype!(bus_statcom_flujo, PowerSystems.ACBusTypes.PV)
+    set_magnitude!(bus_statcom_flujo, v_setpoint_statcom)
+
+    nombre_statcom = "STATCOM_Barra$(bus_statcom_number)"
 
     statcom = ThermalStandard(
-        name      = "STATCOM_Barra3",
+        name      = nombre_statcom,
         available = true,
         status    = true,
-        bus       = bus_solar_flujo,   # <-- usar el bus correcto
+        bus       = bus_statcom_flujo,
 
         active_power   = 0.0,
         reactive_power = 0.0,
@@ -361,7 +361,7 @@ base_Q_load = Dict(get_name(l) => get_reactive_power(l) for l in get_components(
 # gens_termicos_flujo = sort!(collect(get_components(ThermalStandard, sys_flujo)), by=x -> get_name(x))
 
 gens_termicos_flujo = sort!(
-    collect(get_components(g -> get_name(g) != "STATCOM_Barra3", ThermalStandard, sys_flujo)),
+    collect(get_components(g -> get_name(g) != nombre_statcom, ThermalStandard, sys_flujo)),
     by = x -> get_name(x)
 )
 
@@ -407,7 +407,7 @@ for i in 1:24
             gen_barra2 = get_component(ThermalStandard, sys, "gen-2")
             remove_component!(sys_flujo, gen_barra2)
             global gens_termicos_flujo = sort!(
-                collect(get_components(g -> get_name(g) != "STATCOM_Barra3", ThermalStandard, sys_flujo)),
+                collect(get_components(g -> get_name(g) != nombre_statcom, ThermalStandard, sys_flujo)),
                 by = x -> get_name(x)
             )
             println("Contingencia aplicada: caida generador barra 2\n\n")
@@ -445,8 +445,8 @@ for i in 1:24
 
         if "statcom" in include_in_grid
             df_temp = res_temp["bus_results"]
-            q_bus3 = df_temp[df_temp.bus_number .== 3, :Q_gen][1]   # todo el Q en barra 3 es del STATCOM
-            q_statcom_mvar[i] = q_bus3 * S_base
+            q_bus_statcom = df_temp[df_temp.bus_number .== bus_statcom_number, :Q_gen][1]
+            q_statcom_mvar[i] = q_bus_statcom * S_base
         end
 
         # Esta tabla guarda la generación obtenida desde el flujo AC.
@@ -518,10 +518,10 @@ end
 println("\nFlujos de potencia Exitosos")
 display(resultados_voltaje)
 
-CSV.write(joinpath(tablas_path, "5_perfiles_voltaje_modo_$(extra_descriptor)_$(tipo_contingencia).csv"), resultados_voltaje)
+CSV.write(joinpath(tablas_path, "5_perfiles_voltaje_modo_$(extra_descriptor_AC)_$(tipo_contingencia).csv"), resultados_voltaje)
 
 CSV.write(
-    joinpath(tablas_path, "7_despacho_generacion_modo_$(extra_descriptor)_$(tipo_contingencia).csv"),
+    joinpath(tablas_path, "7_despacho_generacion_modo_$(extra_descriptor_AC)_$(tipo_contingencia).csv"),
     despacho_modo
 )
 
@@ -535,23 +535,21 @@ else
     println("⚠ VIOLACIONES DE VOLTAJE ENCONTRADAS:")
     display(violaciones)
 end
-CSV.write(joinpath(tablas_path, "5b_violaciones_voltaje_modo_$(extra_descriptor)_$(tipo_contingencia).csv"), violaciones)
+CSV.write(joinpath(tablas_path, "5b_violaciones_voltaje_modo_$(extra_descriptor_AC)_$(tipo_contingencia).csv"), violaciones)
 
 display(analisis_compensacion)
 
-CSV.write(joinpath(tablas_path, "6_analisis_compensacion_$(extra_descriptor).csv"), analisis_compensacion)
+CSV.write(joinpath(tablas_path, "6_analisis_compensacion_$(extra_descriptor_AC)_$(tipo_contingencia).csv"), analisis_compensacion)
 
 
 if "statcom" in include_in_grid
-    # tabla statcom
     df_statcom = DataFrame(
         Hora            = 0:23,
-        V_Barra3        = resultados_voltaje.Barra_3,
+        V_Barra         = resultados_voltaje[!, "Barra_$(bus_statcom_number)"],
         Q_STATCOM_MVAr  = q_statcom_mvar,
         Saturado        = abs.(q_statcom_mvar) .>= (Q_statcom_mvar * 0.999)
     )
-
-    CSV.write(joinpath(tablas_path, "9_STATCOM_$(extra_descriptor)_$(tipo_contingencia).csv"), df_statcom)
+    CSV.write(joinpath(tablas_path, "9_STATCOM_$(extra_descriptor_AC)_$(tipo_contingencia).csv"), df_statcom)
 end
 
 ### PARA LAS CONTINGENCIAS HACER OTRO DEEPCOPY PARA NO ALTERAR SISTEMA ORIGINAL
